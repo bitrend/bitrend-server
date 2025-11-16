@@ -4,6 +4,8 @@ const connectionString = process.env.DATABASE_URL;
 
 if (!connectionString) {
   console.warn('[db] DATABASE_URL is not set. Database queries will fail until it is configured.');
+} else {
+  console.log('[db] Connected to database');
 }
 
 const pool = new Pool({
