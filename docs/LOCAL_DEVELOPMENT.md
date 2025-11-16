@@ -1,6 +1,7 @@
 # 로컬 개발 환경 설정 가이드
 
 > 프로젝트 아키텍처는 [ARCHITECTURE.md](./ARCHITECTURE.md)를 참고하세요.
+> 초기 설정은 [SETUP.md](./SETUP.md)를 참고하세요.
 
 ## 사전 요구사항
 

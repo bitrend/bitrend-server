@@ -1,4 +1,6 @@
 const axios = require('axios');
+const userRepository = require('../repositories/user.repository');
+const { generateToken } = require('../utils/jwt');
 
 const handleGithubCallback = async (authorizationCode) => {
   const clientID = process.env.GITHUB_CLIENT_ID;
@@ -8,7 +10,7 @@ const handleGithubCallback = async (authorizationCode) => {
     throw new Error('GitHub OAuth credentials are not configured');
   }
 
-  // 1. Access token 요청
+  // 1. GitHub Access token 요청
   const tokenResponse = await axios({
     method: 'post',
     url: 'https://github.com/login/oauth/access_token',
@@ -28,7 +30,7 @@ const handleGithubCallback = async (authorizationCode) => {
     throw new Error('Failed to get access token from GitHub');
   }
 
-  // 2. 사용자 정보 가져오기
+  // 2. GitHub 사용자 정보 가져오기
   const userResponse = await axios({
     method: 'get',
     url: 'https://api.github.com/user',
@@ -39,17 +41,33 @@ const handleGithubCallback = async (authorizationCode) => {
 
   const githubUser = userResponse.data;
 
-  // 3. 여기서 DB에 사용자 저장/업데이트 로직 추가
-  // const user = await userRepository.findOrCreateByGithubId(githubUser.id, githubUser);
+  // 3. DB에서 사용자 찾기 또는 생성
+  let user = await userRepository.findByGithubId(githubUser.id);
+
+  if (user) {
+    // 기존 사용자 - 정보 업데이트
+    user = await userRepository.updateFromGithub(user.id, githubUser);
+  } else {
+    // 신규 사용자 - 회원가입
+    user = await userRepository.createFromGithub(githubUser);
+  }
+
+  // 4. 우리 서버의 JWT 토큰 발급
+  const token = generateToken({
+    id: user.id,
+    githubId: user.githubId,
+    username: user.username
+  });
 
   return {
-    accessToken: access_token,
+    token,
     user: {
-      id: githubUser.id,
-      login: githubUser.login,
-      name: githubUser.name,
-      email: githubUser.email,
-      avatarUrl: githubUser.avatar_url
+      id: user.id,
+      githubId: user.githubId,
+      username: user.username,
+      name: user.name,
+      email: user.email,
+      avatarUrl: user.avatarUrl
     }
   };
 };

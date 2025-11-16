@@ -106,11 +106,10 @@ try {
 ### 1. Repository 생성
 ```javascript
 // src/repositories/post.repository.js
-const db = require('../config/database');
+const prisma = require('../config/prisma');
 
 const findAll = async () => {
-  const result = await db.query('SELECT * FROM posts');
-  return result.rows;
+  return await prisma.post.findMany();
 };
 
 module.exports = { findAll };
@@ -163,6 +162,50 @@ module.exports = router;
 app.use('/api/posts', require('./routes/post.routes'));
 ```
 
+## 데이터베이스 (Prisma ORM)
+
+프로젝트는 **Prisma**를 ORM으로 사용합니다.
+
+### Prisma 스키마
+
+`prisma/schema.prisma`에서 데이터 모델 정의:
+
+```prisma
+model User {
+  id        Int      @id @default(autoincrement())
+  githubId  BigInt   @unique @map("github_id")
+  username  String   @db.VarChar(255)
+  name      String?  @db.VarChar(255)
+  email     String?  @db.VarChar(255)
+  avatarUrl String?  @map("avatar_url") @db.Text
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("users")
+}
+```
+
+### Prisma Client 사용
+
+```javascript
+const prisma = require('../config/prisma');
+
+// 조회
+const user = await prisma.user.findUnique({ where: { id: 1 } });
+
+// 생성
+const newUser = await prisma.user.create({ data: { ... } });
+
+// 업데이트
+const updated = await prisma.user.update({ where: { id: 1 }, data: { ... } });
+```
+
+### 장점
+- 타입 안전성
+- 자동 완성
+- SQL 인젝션 방지
+- 마이그레이션 관리
+
 ## 베스트 프랙티스
 
 ### Controller
@@ -177,8 +220,8 @@ app.use('/api/posts', require('./routes/post.routes'));
 - 재사용 가능한 로직 작성
 
 ### Repository
-- 순수 데이터베이스 쿼리만
-- SQL 인젝션 방지 (파라미터화된 쿼리)
+- Prisma Client를 통한 데이터베이스 접근
+- 순수 데이터 쿼리만 담당
 - 쿼리 결과만 반환
 
 ## 테스트 전략
@@ -188,6 +231,25 @@ Repository → 통합 테스트 (실제 DB 또는 테스트 DB)
 Service    → 단위 테스트 (Repository 모킹)
 Controller → 단위 테스트 (Service 모킹)
 Routes     → E2E 테스트
+```
+
+## Prisma 명령어
+
+```bash
+# Prisma Client 생성/재생성
+npx prisma generate
+
+# 데이터베이스 스키마 확인
+npx prisma db pull
+
+# Prisma Studio (DB GUI)
+npx prisma studio
+
+# 마이그레이션 생성
+npx prisma migrate dev --name migration_name
+
+# 프로덕션 마이그레이션 적용
+npx prisma migrate deploy
 ```
 
 ## 환경 변수

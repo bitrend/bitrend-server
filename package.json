@@ -13,10 +13,13 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@prisma/client": "^6.19.0",
     "axios": "^1.13.2",
     "dotenv": "^17.2.3",
     "express": "^5.1.0",
-    "pg": "^8.16.3"
+    "jsonwebtoken": "^9.0.2",
+    "pg": "^8.16.3",
+    "prisma": "^6.19.0"
   },
   "devDependencies": {
     "nodemon": "^3.1.10"

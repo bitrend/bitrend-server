@@ -7,3 +7,5 @@ yarn-error.log
 .DS_Store
 dist
 coverage
+
+/src/generated/prisma

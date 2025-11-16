@@ -1,26 +1,56 @@
-const db = require('../config/database');
+const prisma = require('../config/prisma');
 
 const findAll = async () => {
-  const result = await db.query('SELECT * FROM users');
-  return result.rows;
+  return await prisma.user.findMany();
 };
 
 const findById = async (id) => {
-  const result = await db.query('SELECT * FROM users WHERE id = $1', [id]);
-  return result.rows[0];
+  return await prisma.user.findUnique({
+    where: { id }
+  });
+};
+
+const findByGithubId = async (githubId) => {
+  return await prisma.user.findUnique({
+    where: { githubId }
+  });
 };
 
 const create = async (userData) => {
-  const { name, email } = userData;
-  const result = await db.query(
-    'INSERT INTO users (name, email) VALUES ($1, $2) RETURNING *',
-    [name, email]
-  );
-  return result.rows[0];
+  return await prisma.user.create({
+    data: userData
+  });
+};
+
+const createFromGithub = async (githubUser) => {
+  return await prisma.user.create({
+    data: {
+      githubId: githubUser.id,
+      username: githubUser.login,
+      name: githubUser.name,
+      email: githubUser.email,
+      avatarUrl: githubUser.avatar_url
+    }
+  });
+};
+
+const updateFromGithub = async (id, githubUser) => {
+  return await prisma.user.update({
+    where: { id },
+    data: {
+      username: githubUser.login,
+      name: githubUser.name,
+      email: githubUser.email,
+      avatarUrl: githubUser.avatar_url
+    }
+  });
 };
 
 module.exports = {
   findAll,
   findById,
-  create
+  findByGithubId,
+  create,
+  createFromGithub,
+  updateFromGithub
 };

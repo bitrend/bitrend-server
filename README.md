@@ -44,8 +44,11 @@ npm start
 
 ## 문서
 
-- [로컬 개발 환경 설정](./LOCAL_DEVELOPMENT.md)
-- [프로젝트 아키텍처](./ARCHITECTURE.md)
+- [초기 설정 가이드](./docs/SETUP.md) ⭐ 시작하기
+- [API 명세서](./docs/API.md)
+- [Prisma 가이드](./docs/PRISMA.md)
+- [로컬 개발 환경 설정](./docs/LOCAL_DEVELOPMENT.md)
+- [프로젝트 아키텍처](./docs/ARCHITECTURE.md)
 
 ## 프로젝트 구조
 
@@ -80,4 +83,6 @@ POST   /api/users
 - Node.js
 - Express 5
 - PostgreSQL
+- Prisma ORM
+- JWT Authentication
 - Docker
