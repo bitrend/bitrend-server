@@ -10,7 +10,9 @@ app.get('/health', (_req, res) => {
   res.json({ status: 'ok' });
 });
 
-// Routes will be registered here
+// Routes
+app.use('/api/auth', require('./routes/auth.routes'));
+app.use('/api/images', require('./routes/images.routes'));
 // app.use('/api/users', require('./routes/user.routes'));
 
 // Error handler (must be last)
