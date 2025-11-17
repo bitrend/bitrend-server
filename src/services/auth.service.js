@@ -5,10 +5,16 @@ const { generateToken } = require('../utils/jwt');
 const handleGithubCallback = async (authorizationCode) => {
   const clientID = process.env.GITHUB_CLIENT_ID;
   const clientSecret = process.env.GITHUB_CLIENT_SECRET;
+  const redirectUri = process.env.GITHUB_REDIRECT_URI;
 
   if (!clientID || !clientSecret) {
     throw new Error('GitHub OAuth credentials are not configured');
   }
+
+  console.log('Requesting token with:', {
+    client_id: clientID,
+    code: authorizationCode
+  });
 
   // 1. GitHub Access token 요청
   const tokenResponse = await axios({
@@ -24,10 +30,11 @@ const handleGithubCallback = async (authorizationCode) => {
     }
   });
 
-  const { access_token } = tokenResponse.data;
+  const { access_token, error, error_description } = tokenResponse.data;
 
   if (!access_token) {
-    throw new Error('Failed to get access token from GitHub');
+    console.error('GitHub token response:', tokenResponse.data);
+    throw new Error(`Failed to get access token from GitHub: ${error_description || error || 'Unknown error'}`);
   }
 
   // 2. GitHub 사용자 정보 가져오기
