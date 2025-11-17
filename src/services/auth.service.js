@@ -62,7 +62,7 @@ const handleGithubCallback = async (authorizationCode) => {
   // 4. 우리 서버의 JWT 토큰 발급
   const token = generateToken({
     id: user.id,
-    githubId: user.githubId,
+    githubId: user.githubId.toString(),
     username: user.username
   });
 
@@ -70,7 +70,7 @@ const handleGithubCallback = async (authorizationCode) => {
     token,
     user: {
       id: user.id,
-      githubId: user.githubId,
+      githubId: user.githubId.toString(),
       username: user.username,
       name: user.name,
       email: user.email,
