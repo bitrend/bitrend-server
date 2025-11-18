@@ -9,3 +9,5 @@ dist
 coverage
 
 /src/generated/prisma
+
+.kiro
