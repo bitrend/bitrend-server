@@ -52,11 +52,11 @@ const handleGithubCallback = async (authorizationCode) => {
   let user = await userRepository.findByGithubId(githubUser.id);
 
   if (user) {
-    // 기존 사용자 - 정보 업데이트
-    user = await userRepository.updateFromGithub(user.id, githubUser);
+    // 기존 사용자 - 정보 및 access token 업데이트
+    user = await userRepository.updateFromGithub(user.id, githubUser, access_token);
   } else {
-    // 신규 사용자 - 회원가입
-    user = await userRepository.createFromGithub(githubUser);
+    // 신규 사용자 - 회원가입 시 access token 저장
+    user = await userRepository.createFromGithub(githubUser, access_token);
   }
 
   // 4. 우리 서버의 JWT 토큰 발급
