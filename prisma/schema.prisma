@@ -8,14 +8,16 @@ datasource db {
 }
 
 model User {
-  id        Int      @id @default(autoincrement())
-  githubId  BigInt   @unique @map("github_id")
-  username  String   @db.VarChar(255)
-  name      String?  @db.VarChar(255)
-  email     String?  @db.VarChar(255)
-  avatarUrl String?  @map("avatar_url") @db.Text
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  id          Int      @id @default(autoincrement())
+  githubId    BigInt   @unique @map("github_id")
+  username    String   @db.VarChar(255)
+  name        String?  @db.VarChar(255)
+  email       String?  @db.VarChar(255)
+  avatarUrl   String?  @map("avatar_url") @db.Text
+  role        String?  @db.VarChar(100)
+  accessToken String?  @map("access_token") @db.Text
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
 
   @@index([githubId])
   @@index([username])
