@@ -22,27 +22,36 @@ const create = async (userData) => {
   });
 };
 
-const createFromGithub = async (githubUser) => {
+const createFromGithub = async (githubUser, accessToken) => {
   return await prisma.user.create({
     data: {
       githubId: githubUser.id,
       username: githubUser.login,
       name: githubUser.name,
       email: githubUser.email,
-      avatarUrl: githubUser.avatar_url
+      avatarUrl: githubUser.avatar_url,
+      accessToken: accessToken
     }
   });
 };
 
-const updateFromGithub = async (id, githubUser) => {
+const updateFromGithub = async (id, githubUser, accessToken) => {
   return await prisma.user.update({
     where: { id },
     data: {
       username: githubUser.login,
       name: githubUser.name,
       email: githubUser.email,
-      avatarUrl: githubUser.avatar_url
+      avatarUrl: githubUser.avatar_url,
+      accessToken: accessToken
     }
+  });
+};
+
+const update = async (id, updateData) => {
+  return await prisma.user.update({
+    where: { id },
+    data: updateData
   });
 };
 
@@ -52,5 +61,6 @@ module.exports = {
   findByGithubId,
   create,
   createFromGithub,
-  updateFromGithub
+  updateFromGithub,
+  update
 };
