@@ -18,7 +18,7 @@ Authorization: Bearer {token}
 ```json
 {
   "id": 1,
-  "githubId": 12345678,
+  "githubId": "12345678",
   "username": "stephan",
   "name": "Stephan",
   "email": "stephan@bitrend.com",
@@ -30,7 +30,7 @@ Authorization: Bearer {token}
 
 **Response Fields:**
 - `id` (number): 사용자 고유 ID
-- `githubId` (number): GitHub 사용자 ID
+- `githubId` (string): GitHub 사용자 ID (문자열로 반환)
 - `username` (string): GitHub 사용자명
 - `name` (string): 사용자 이름
 - `email` (string): 이메일 주소
@@ -178,7 +178,7 @@ Content-Type: application/json
 ```json
 {
   "id": 1,
-  "githubId": 12345678,
+  "githubId": "12345678",
   "username": "stephan",
   "name": "Stephan Kim",
   "email": "stephan.kim@bitrend.com",
@@ -196,7 +196,7 @@ Content-Type: application/json
 // 사용자 프로필
 export interface UserProfile {
   id: number;
-  githubId: number;
+  githubId: string;  // 문자열로 반환 (프론트엔드 호환성)
   username: string;
   name: string;
   email: string;
