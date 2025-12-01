@@ -1,6 +1,8 @@
 const express = require('express');
 const cors = require('cors');
 const errorHandler = require('./middlewares/errorHandler');
+const swaggerUi = require('swagger-ui-express');
+const swaggerDocument = require('../swagger.json');
 
 const app = express();
 
@@ -25,6 +27,7 @@ app.use('/api/images', require('./routes/images.routes'));
 app.use('/api/users', require('./routes/user.routes'));
 
 // Error handler (must be last)
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
 app.use(errorHandler);
 
 module.exports = app;
