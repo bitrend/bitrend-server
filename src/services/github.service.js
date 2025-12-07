@@ -315,6 +315,154 @@ const getRepositoryStats = async (owner, repo, accessToken) => {
   }
 };
 
+/**
+ * 리포지토리 파일 내용 조회 (분석용)
+ */
+const getRepositoryFiles = async (owner, repo, accessToken, maxFiles = 10) => {
+  try {
+    const tree = await githubRequest(`${GITHUB_API_BASE}/repos/${owner}/${repo}/git/trees/${await getDefaultBranch(owner, repo, accessToken)}?recursive=1`, accessToken);
+
+    const codeFiles = tree.tree
+      .filter(item => item.type === 'blob')
+      .filter(item => {
+        const ext = item.path.split('.').pop().toLowerCase();
+        return ['js', 'ts', 'jsx', 'tsx', 'py', 'java', 'cpp', 'c', 'cs', 'go', 'rs', 'php', 'rb'].includes(ext);
+      })
+      .slice(0, maxFiles);
+
+    const fileContents = await Promise.allSettled(
+      codeFiles.map(async file => {
+        try {
+          const content = await githubRequest(`${GITHUB_API_BASE}/repos/${owner}/${repo}/contents/${file.path}`, accessToken);
+          return {
+            name: file.path,
+            content: Buffer.from(content.content, 'base64').toString('utf-8'),
+            size: file.size || 0
+          };
+        } catch (error) {
+          return null;
+        }
+      })
+    );
+
+    return fileContents
+      .filter(result => result.status === 'fulfilled' && result.value)
+      .map(result => result.value);
+
+  } catch (error) {
+    console.error('Error fetching repository files:', error.message);
+    return [];
+  }
+};
+
+/**
+ * 리포지토리 구조 조회
+ */
+const getRepositoryStructure = async (owner, repo, accessToken) => {
+  try {
+    const tree = await githubRequest(`${GITHUB_API_BASE}/repos/${owner}/${repo}/git/trees/${await getDefaultBranch(owner, repo, accessToken)}?recursive=1`, accessToken);
+
+    return tree.tree
+      .filter(item => item.type === 'tree' || item.path.includes('/'))
+      .map(item => item.path)
+      .slice(0, 100);
+
+  } catch (error) {
+    console.error('Error fetching repository structure:', error.message);
+    return [];
+  }
+};
+
+/**
+ * package.json 파일 조회
+ */
+const getPackageJson = async (owner, repo, accessToken) => {
+  try {
+    const content = await githubRequest(`${GITHUB_API_BASE}/repos/${owner}/${repo}/contents/package.json`, accessToken);
+    const packageJson = JSON.parse(Buffer.from(content.content, 'base64').toString('utf-8'));
+    return packageJson;
+  } catch (error) {
+    console.warn('package.json not found or not accessible');
+    return null;
+  }
+};
+
+/**
+ * 기본 브랜치 조회
+ */
+const getDefaultBranch = async (owner, repo, accessToken) => {
+  try {
+    const repoDetails = await githubRequest(`${GITHUB_API_BASE}/repos/${owner}/${repo}`, accessToken);
+    return repoDetails.default_branch || 'main';
+  } catch (error) {
+    return 'main';
+  }
+};
+
+/**
+ * 리포지토리 브랜치 정보 조회
+ */
+const getRepositoryBranches = async (owner, repo, accessToken) => {
+  try {
+    const branches = await githubRequest(`${GITHUB_API_BASE}/repos/${owner}/${repo}/branches`, accessToken);
+    return branches.map(branch => ({
+      name: branch.name,
+      protected: branch.protected || false,
+      commit: {
+        sha: branch.commit.sha,
+        date: branch.commit.commit.committer.date
+      }
+    }));
+  } catch (error) {
+    console.error('Error fetching repository branches:', error.message);
+    return [];
+  }
+};
+
+/**
+ * 리포지토리 이슈 분석
+ */
+const getRepositoryIssues = async (owner, repo, accessToken) => {
+  try {
+    const [openIssues, closedIssues] = await Promise.allSettled([
+      githubRequest(`${GITHUB_API_BASE}/repos/${owner}/${repo}/issues?state=open&per_page=100`, accessToken),
+      githubRequest(`${GITHUB_API_BASE}/repos/${owner}/${repo}/issues?state=closed&per_page=100`, accessToken)
+    ]);
+
+    return {
+      openCount: openIssues.status === 'fulfilled' ? openIssues.value.length : 0,
+      closedCount: closedIssues.status === 'fulfilled' ? closedIssues.value.length : 0,
+      totalCount: (openIssues.status === 'fulfilled' ? openIssues.value.length : 0) +
+                  (closedIssues.status === 'fulfilled' ? closedIssues.value.length : 0)
+    };
+  } catch (error) {
+    console.error('Error fetching repository issues:', error.message);
+    return { openCount: 0, closedCount: 0, totalCount: 0 };
+  }
+};
+
+/**
+ * 리포지토리 Pull Request 분석
+ */
+const getRepositoryPullRequests = async (owner, repo, accessToken) => {
+  try {
+    const [openPRs, closedPRs] = await Promise.allSettled([
+      githubRequest(`${GITHUB_API_BASE}/repos/${owner}/${repo}/pulls?state=open&per_page=100`, accessToken),
+      githubRequest(`${GITHUB_API_BASE}/repos/${owner}/${repo}/pulls?state=closed&per_page=100`, accessToken)
+    ]);
+
+    return {
+      openCount: openPRs.status === 'fulfilled' ? openPRs.value.length : 0,
+      closedCount: closedPRs.status === 'fulfilled' ? closedPRs.value.length : 0,
+      totalCount: (openPRs.status === 'fulfilled' ? openPRs.value.length : 0) +
+                  (closedPRs.status === 'fulfilled' ? closedPRs.value.length : 0)
+    };
+  } catch (error) {
+    console.error('Error fetching repository pull requests:', error.message);
+    return { openCount: 0, closedCount: 0, totalCount: 0 };
+  }
+};
+
 module.exports = {
   githubRequest,
   getUserStats,
@@ -322,5 +470,12 @@ module.exports = {
   getUserRepositories,
   getRepositoryDetails,
   getRepositoryLanguages,
-  getRepositoryStats
+  getRepositoryStats,
+  getRepositoryFiles,
+  getRepositoryStructure,
+  getPackageJson,
+  getDefaultBranch,
+  getRepositoryBranches,
+  getRepositoryIssues,
+  getRepositoryPullRequests
 };

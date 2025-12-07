@@ -1,6 +1,7 @@
 const analysisRepository = require('../repositories/analysis.repository');
 const evaluationProjectRepository = require('../repositories/evaluationProject.repository');
 const githubService = require('./github.service');
+const enhancedAnalysisService = require('./enhancedAnalysis.service');
 const userStatsRepository = require('../repositories/userStats.repository');
 const userActivityRepository = require('../repositories/userActivity.repository');
 
@@ -333,8 +334,23 @@ const getAnalysisResults = async (userId, analysisId) => {
   }
 };
 
+const startComprehensiveAnalysis = async (userId, evaluationProjectIds, options = {}) => {
+  return await enhancedAnalysisService.startComprehensiveAnalysis(userId, evaluationProjectIds, options);
+};
+
+const getComprehensiveAnalysisStatus = async (userId, analysisId) => {
+  return await enhancedAnalysisService.getAnalysisStatus(userId, analysisId);
+};
+
+const getComprehensiveAnalysisResults = async (userId, analysisId) => {
+  return await enhancedAnalysisService.getAnalysisResults(userId, analysisId);
+};
+
 module.exports = {
   startAnalysis,
   getAnalysisStatus,
-  getAnalysisResults
+  getAnalysisResults,
+  startComprehensiveAnalysis,
+  getComprehensiveAnalysisStatus,
+  getComprehensiveAnalysisResults
 };
