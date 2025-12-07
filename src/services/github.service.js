@@ -1,11 +1,12 @@
 const axios = require('axios');
 
 const GITHUB_API_BASE = 'https://api.github.com';
+const RATE_LIMIT_DELAY = 1000;
 
 /**
  * GitHub API 요청 헬퍼
  */
-const githubRequest = async (url, accessToken) => {
+const githubRequest = async (url, accessToken, retries = 3) => {
   try {
     const response = await axios.get(url, {
       headers: {
@@ -21,6 +22,25 @@ const githubRequest = async (url, accessToken) => {
       err.statusCode = 401;
       throw err;
     }
+
+    if (error.response?.status === 403 && error.response?.headers['x-ratelimit-remaining'] === '0') {
+      if (retries > 0) {
+        const resetTime = parseInt(error.response.headers['x-ratelimit-reset']) * 1000;
+        const waitTime = Math.max(resetTime - Date.now(), RATE_LIMIT_DELAY);
+        await new Promise(resolve => setTimeout(resolve, waitTime));
+        return githubRequest(url, accessToken, retries - 1);
+      }
+      const err = new Error('GitHub API rate limit exceeded');
+      err.code = 'RATE_LIMIT';
+      err.statusCode = 429;
+      throw err;
+    }
+
+    if (error.response?.status >= 500 && retries > 0) {
+      await new Promise(resolve => setTimeout(resolve, RATE_LIMIT_DELAY));
+      return githubRequest(url, accessToken, retries - 1);
+    }
+
     throw error;
   }
 };
@@ -159,8 +179,148 @@ const getRelativeTime = (date) => {
   return `${diffMonths} month${diffMonths > 1 ? 's' : ''} ago`;
 };
 
+/**
+ * 사용자 리포지토리 목록 조회
+ */
+const getUserRepositories = async (username, accessToken, options = {}) => {
+  const { sort = 'updated', direction = 'desc', per_page = 30, page = 1, type = 'all' } = options;
+
+  const url = `${GITHUB_API_BASE}/user/repos?sort=${sort}&direction=${direction}&per_page=${per_page}&page=${page}&type=${type}`;
+
+  try {
+    const repositories = await githubRequest(url, accessToken);
+    return repositories.map(repo => ({
+      id: repo.id,
+      name: repo.name,
+      full_name: repo.full_name,
+      description: repo.description,
+      language: repo.language,
+      stargazers_count: repo.stargazers_count,
+      forks_count: repo.forks_count,
+      size: repo.size,
+      private: repo.private,
+      html_url: repo.html_url,
+      clone_url: repo.clone_url,
+      created_at: repo.created_at,
+      updated_at: repo.updated_at,
+      pushed_at: repo.pushed_at,
+      default_branch: repo.default_branch
+    }));
+  } catch (error) {
+    console.error('Error fetching user repositories:', error.message);
+    throw error;
+  }
+};
+
+/**
+ * 특정 리포지토리 상세 정보 조회
+ */
+const getRepositoryDetails = async (owner, repo, accessToken) => {
+  const url = `${GITHUB_API_BASE}/repos/${owner}/${repo}`;
+
+  try {
+    const repository = await githubRequest(url, accessToken);
+    return {
+      id: repository.id,
+      name: repository.name,
+      full_name: repository.full_name,
+      description: repository.description,
+      language: repository.language,
+      stargazers_count: repository.stargazers_count,
+      forks_count: repository.forks_count,
+      watchers_count: repository.watchers_count,
+      size: repository.size,
+      private: repository.private,
+      html_url: repository.html_url,
+      clone_url: repository.clone_url,
+      created_at: repository.created_at,
+      updated_at: repository.updated_at,
+      pushed_at: repository.pushed_at,
+      default_branch: repository.default_branch,
+      topics: repository.topics || [],
+      license: repository.license,
+      has_issues: repository.has_issues,
+      has_projects: repository.has_projects,
+      has_wiki: repository.has_wiki,
+      archived: repository.archived,
+      disabled: repository.disabled
+    };
+  } catch (error) {
+    console.error('Error fetching repository details:', error.message);
+    throw error;
+  }
+};
+
+/**
+ * 리포지토리 언어 분석
+ */
+const getRepositoryLanguages = async (owner, repo, accessToken) => {
+  const url = `${GITHUB_API_BASE}/repos/${owner}/${repo}/languages`;
+
+  try {
+    const languages = await githubRequest(url, accessToken);
+
+    const total = Object.values(languages).reduce((sum, bytes) => sum + bytes, 0);
+
+    return Object.entries(languages).map(([language, bytes]) => ({
+      language,
+      bytes,
+      percentage: total > 0 ? (bytes / total * 100).toFixed(2) : 0
+    })).sort((a, b) => b.bytes - a.bytes);
+  } catch (error) {
+    console.error('Error fetching repository languages:', error.message);
+    throw error;
+  }
+};
+
+/**
+ * 리포지토리 통계 정보 조회
+ */
+const getRepositoryStats = async (owner, repo, accessToken) => {
+  try {
+    const [repoDetails, languages, commits, contributors] = await Promise.allSettled([
+      getRepositoryDetails(owner, repo, accessToken),
+      getRepositoryLanguages(owner, repo, accessToken),
+      githubRequest(`${GITHUB_API_BASE}/repos/${owner}/${repo}/commits?per_page=1`, accessToken),
+      githubRequest(`${GITHUB_API_BASE}/repos/${owner}/${repo}/contributors?per_page=100`, accessToken)
+    ]);
+
+    const stats = {
+      basic: repoDetails.status === 'fulfilled' ? repoDetails.value : null,
+      languages: languages.status === 'fulfilled' ? languages.value : [],
+      totalCommits: 0,
+      contributorsCount: 0,
+      lastCommitDate: null
+    };
+
+    if (commits.status === 'fulfilled' && commits.value.length > 0) {
+      try {
+        const allCommits = await githubRequest(`${GITHUB_API_BASE}/repos/${owner}/${repo}/commits?per_page=100`, accessToken);
+        stats.totalCommits = allCommits.length;
+        stats.lastCommitDate = allCommits[0]?.commit?.committer?.date;
+      } catch (error) {
+        console.warn('Could not fetch all commits, using approximate count');
+        stats.totalCommits = -1;
+      }
+    }
+
+    if (contributors.status === 'fulfilled') {
+      stats.contributorsCount = contributors.value.length;
+    }
+
+    return stats;
+  } catch (error) {
+    console.error('Error fetching repository stats:', error.message);
+    throw error;
+  }
+};
+
 module.exports = {
   githubRequest,
   getUserStats,
-  getUserActivities
+  getUserActivities,
+  getUserRepositories,
+  getRepositoryDetails,
+  getRepositoryLanguages,
+  getRepositoryStats
 };
