@@ -25,6 +25,9 @@ app.get('/health', (_req, res) => {
 app.use('/api/auth', require('./routes/auth.routes'));
 app.use('/api/images', require('./routes/images.routes'));
 app.use('/api/users', require('./routes/user.routes'));
+app.use('/api/github', require('./routes/github.routes'));
+app.use('/api/evaluation', require('./routes/evaluationProject.routes'));
+app.use('/api/analysis', require('./routes/analysis.routes'));
 
 // Error handler (must be last)
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
