@@ -9,7 +9,7 @@ class AIService {
     }
 
     this.genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-    this.model = this.genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    this.model = this.genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
     this.enabled = true;
   }
 
@@ -26,7 +26,13 @@ class AIService {
       const prompt = this.buildCodeQualityPrompt(repositoryData, fileContents, languageStats);
       const result = await this.model.generateContent(prompt);
       const response = await result.response;
-      const analysis = JSON.parse(response.text());
+      const text = response.text();
+
+      // Extract JSON from markdown code blocks if present
+      const jsonMatch = text.match(/```json\s*([\s\S]*?)\s*```/) || text.match(/```\s*([\s\S]*?)\s*```/);
+      const jsonText = jsonMatch ? jsonMatch[1].trim() : text.trim();
+
+      const analysis = JSON.parse(jsonText);
 
       return {
         score: analysis.score,
@@ -57,7 +63,13 @@ class AIService {
       const prompt = this.buildProjectStructurePrompt(repositoryData, fileStructure, packageJson);
       const result = await this.model.generateContent(prompt);
       const response = await result.response;
-      const analysis = JSON.parse(response.text());
+      const text = response.text();
+
+      // Extract JSON from markdown code blocks if present
+      const jsonMatch = text.match(/```json\s*([\s\S]*?)\s*```/) || text.match(/```\s*([\s\S]*?)\s*```/);
+      const jsonText = jsonMatch ? jsonMatch[1].trim() : text.trim();
+
+      const analysis = JSON.parse(jsonText);
 
       return {
         score: analysis.score,
@@ -87,7 +99,13 @@ class AIService {
       const prompt = this.buildSkillAssessmentPrompt(repositoryData, technicalIndicators);
       const result = await this.model.generateContent(prompt);
       const response = await result.response;
-      const analysis = JSON.parse(response.text());
+      const text = response.text();
+
+      // Extract JSON from markdown code blocks if present
+      const jsonMatch = text.match(/```json\s*([\s\S]*?)\s*```/) || text.match(/```\s*([\s\S]*?)\s*```/);
+      const jsonText = jsonMatch ? jsonMatch[1].trim() : text.trim();
+
+      const analysis = JSON.parse(jsonText);
 
       return {
         score: analysis.score,
@@ -114,7 +132,13 @@ class AIService {
       const prompt = this.buildRecommendationsPrompt(allAnalysisResults, userContext);
       const result = await this.model.generateContent(prompt);
       const response = await result.response;
-      const recommendations = JSON.parse(response.text());
+      const text = response.text();
+
+      // Extract JSON from markdown code blocks if present
+      const jsonMatch = text.match(/```json\s*([\s\S]*?)\s*```/) || text.match(/```\s*([\s\S]*?)\s*```/);
+      const jsonText = jsonMatch ? jsonMatch[1].trim() : text.trim();
+
+      const recommendations = JSON.parse(jsonText);
 
       return recommendations.map(rec => ({
         priority: rec.priority || 'medium',

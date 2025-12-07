@@ -1,30 +1,59 @@
 const analysisService = require('../services/analysis.service');
+const enhancedAnalysisService = require('../services/enhancedAnalysis.service');
 
 const startEvaluationAnalysis = async (req, res, next) => {
   try {
     const userId = req.user.id;
-    const { evaluationProjectId } = req.body;
+    const { evaluationProjectId, evaluationProjectIds, analysisType = 'basic', options = {} } = req.body;
 
-    if (!evaluationProjectId) {
+    // Support both single project (legacy) and multiple projects (new comprehensive analysis)
+    if (!evaluationProjectId && !evaluationProjectIds) {
       return res.status(400).json({
         success: false,
-        message: 'Evaluation project ID is required'
+        message: 'Evaluation project ID(s) are required'
       });
     }
 
-    const analysis = await analysisService.startAnalysis(userId, parseInt(evaluationProjectId));
+    let analysis;
 
-    res.status(201).json({
-      success: true,
-      data: {
-        analysis: {
-          id: analysis.id,
-          status: analysis.status,
-          createdAt: analysis.createdAt
-        }
-      },
-      message: 'Analysis started successfully'
-    });
+    if (evaluationProjectIds && evaluationProjectIds.length > 0) {
+      // New comprehensive analysis
+      analysis = await enhancedAnalysisService.startComprehensiveAnalysis(userId, evaluationProjectIds, {
+        ...options,
+        analysisType
+      });
+
+      return res.status(202).json({
+        success: true,
+        data: {
+          analysis: {
+            id: analysis.analysisId,
+            status: analysis.status,
+            analysisType: 'comprehensive',
+            projectsToAnalyze: analysis.projectsToAnalyze,
+            estimatedDuration: analysis.overallEstimatedDuration,
+            startedAt: analysis.startedAt,
+            queuePosition: analysis.queuePosition
+          }
+        },
+        message: 'Comprehensive analysis started successfully'
+      });
+    } else {
+      // Legacy single project analysis
+      analysis = await analysisService.startAnalysis(userId, parseInt(evaluationProjectId));
+
+      return res.status(201).json({
+        success: true,
+        data: {
+          analysis: {
+            id: analysis.id,
+            status: analysis.status,
+            createdAt: analysis.createdAt
+          }
+        },
+        message: 'Analysis started successfully'
+      });
+    }
 
   } catch (error) {
     console.error('Error starting evaluation analysis:', error);
@@ -58,37 +87,57 @@ const startEvaluationAnalysis = async (req, res, next) => {
 const getAnalysisStatus = async (req, res, next) => {
   try {
     const userId = req.user.id;
-    const analysisId = parseInt(req.params.id);
+    const analysisId = req.params.id;
 
-    if (!analysisId || isNaN(analysisId)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Valid analysis ID is required'
-      });
-    }
+    // Check if it's a numeric ID (legacy) or string ID (enhanced)
+    const isLegacy = !isNaN(parseInt(analysisId));
 
-    const analysis = await analysisService.getAnalysisStatus(userId, analysisId);
+    let analysis;
+    if (isLegacy) {
+      analysis = await analysisService.getAnalysisStatus(userId, parseInt(analysisId));
 
-    res.json({
-      success: true,
-      data: {
-        analysis: {
-          id: analysis.id,
-          status: analysis.status,
-          score: analysis.score,
-          grade: analysis.grade,
-          createdAt: analysis.createdAt,
-          completedAt: analysis.completedAt,
-          evaluationProject: {
-            id: analysis.evaluationProject.id,
-            repository: {
-              name: analysis.evaluationProject.repository.name,
-              fullName: analysis.evaluationProject.repository.fullName
+      res.json({
+        success: true,
+        data: {
+          analysis: {
+            id: analysis.id,
+            status: analysis.status,
+            score: analysis.score,
+            grade: analysis.grade,
+            createdAt: analysis.createdAt,
+            completedAt: analysis.completedAt,
+            evaluationProject: {
+              id: analysis.evaluationProject.id,
+              repository: {
+                name: analysis.evaluationProject.repository.name,
+                fullName: analysis.evaluationProject.repository.fullName
+              }
             }
           }
         }
-      }
-    });
+      });
+    } else {
+      // Enhanced analysis
+      analysis = await enhancedAnalysisService.getAnalysisStatus(userId, analysisId);
+
+      res.json({
+        success: true,
+        data: {
+          analysis: {
+            id: analysis.id,
+            status: analysis.status,
+            analysisType: analysis.analysisType || 'comprehensive',
+            score: analysis.totalScore,
+            grade: analysis.grade,
+            createdAt: analysis.createdAt,
+            completedAt: analysis.completedAt,
+            progress: analysis.progress || 0,
+            currentPhase: analysis.currentPhase,
+            projectResults: analysis.projectResults || []
+          }
+        }
+      });
+    }
 
   } catch (error) {
     console.error('Error fetching analysis status:', error);
@@ -114,69 +163,92 @@ const getAnalysisStatus = async (req, res, next) => {
 const getAnalysisResults = async (req, res, next) => {
   try {
     const userId = req.user.id;
-    const analysisId = parseInt(req.params.id);
+    const analysisId = req.params.id;
 
-    if (!analysisId || isNaN(analysisId)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Valid analysis ID is required'
+    // Check if it's a numeric ID (legacy) or string ID (enhanced)
+    const isLegacy = !isNaN(parseInt(analysisId));
+
+    let analysis;
+    if (isLegacy) {
+      analysis = await analysisService.getAnalysisResults(userId, parseInt(analysisId));
+
+      const metricsGrouped = analysis.metrics.reduce((acc, metric) => {
+        if (!acc[metric.category]) {
+          acc[metric.category] = [];
+        }
+        acc[metric.category].push({
+          name: metric.name,
+          value: metric.value,
+          maxValue: metric.maxValue,
+          weight: metric.weight
+        });
+        return acc;
+      }, {});
+
+      const recommendationsGrouped = analysis.recommendations.reduce((acc, rec) => {
+        if (!acc[rec.category]) {
+          acc[rec.category] = [];
+        }
+        acc[rec.category].push({
+          title: rec.title,
+          description: rec.description,
+          priority: rec.priority,
+          estimatedHours: rec.estimatedHours
+        });
+        return acc;
+      }, {});
+
+      res.json({
+        success: true,
+        data: {
+          analysis: {
+            id: analysis.id,
+            status: analysis.status,
+            score: analysis.score,
+            grade: analysis.grade,
+            createdAt: analysis.createdAt,
+            completedAt: analysis.completedAt,
+            evaluationProject: {
+              id: analysis.evaluationProject.id,
+              repository: {
+                name: analysis.evaluationProject.repository.name,
+                fullName: analysis.evaluationProject.repository.fullName,
+                description: analysis.evaluationProject.repository.description,
+                language: analysis.evaluationProject.repository.language,
+                stars: analysis.evaluationProject.repository.stars,
+                forks: analysis.evaluationProject.repository.forks
+              }
+            },
+            metrics: metricsGrouped,
+            recommendations: recommendationsGrouped
+          }
+        }
+      });
+    } else {
+      // Enhanced analysis
+      analysis = await enhancedAnalysisService.getAnalysisResults(userId, analysisId);
+
+      res.json({
+        success: true,
+        data: {
+          analysis: {
+            id: analysis.id,
+            status: analysis.status,
+            analysisType: analysis.analysisType || 'comprehensive',
+            score: analysis.totalScore,
+            grade: analysis.grade,
+            createdAt: analysis.createdAt,
+            completedAt: analysis.completedAt,
+            overallResults: analysis.overallResults,
+            projectResults: analysis.projectResults,
+            skillLevel: analysis.overallResults?.skillLevel,
+            strongPoints: analysis.overallResults?.strongPoints,
+            improvementAreas: analysis.overallResults?.improvementAreas,
+            recommendations: analysis.overallResults?.recommendations
+          }
+        }
       });
     }
-
-    const analysis = await analysisService.getAnalysisResults(userId, analysisId);
-
-    const metricsGrouped = analysis.metrics.reduce((acc, metric) => {
-      if (!acc[metric.category]) {
-        acc[metric.category] = [];
-      }
-      acc[metric.category].push({
-        name: metric.name,
-        value: metric.value,
-        maxValue: metric.maxValue,
-        weight: metric.weight
-      });
-      return acc;
-    }, {});
-
-    const recommendationsGrouped = analysis.recommendations.reduce((acc, rec) => {
-      if (!acc[rec.category]) {
-        acc[rec.category] = [];
-      }
-      acc[rec.category].push({
-        title: rec.title,
-        description: rec.description,
-        priority: rec.priority,
-        estimatedHours: rec.estimatedHours
-      });
-      return acc;
-    }, {});
-
-    res.json({
-      success: true,
-      data: {
-        analysis: {
-          id: analysis.id,
-          status: analysis.status,
-          score: analysis.score,
-          grade: analysis.grade,
-          createdAt: analysis.createdAt,
-          completedAt: analysis.completedAt,
-          evaluationProject: {
-            id: analysis.evaluationProject.id,
-            repository: {
-              name: analysis.evaluationProject.repository.name,
-              fullName: analysis.evaluationProject.repository.fullName,
-              description: analysis.evaluationProject.repository.description,
-              language: analysis.evaluationProject.repository.language,
-              stars: analysis.evaluationProject.repository.stars,
-              forks: analysis.evaluationProject.repository.forks
-            }
-          },
-          metrics: metricsGrouped,
-          recommendations: recommendationsGrouped
-        }
-      }
-    });
 
   } catch (error) {
     console.error('Error fetching analysis results:', error);
