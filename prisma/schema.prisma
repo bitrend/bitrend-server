@@ -19,7 +19,156 @@ model User {
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
+  evaluationProjects EvaluationProject[]
+  analyses           Analysis[]
+  userActivities     UserActivity[]
+  userStats          UserStats[]
+  userRanking        UserRanking[]
+
   @@index([githubId])
   @@index([username])
   @@map("users")
+}
+
+model GitHubRepository {
+  id          Int      @id @default(autoincrement())
+  githubId    BigInt   @unique @map("github_id")
+  name        String   @db.VarChar(255)
+  fullName    String   @unique @map("full_name") @db.VarChar(255)
+  description String?  @db.Text
+  language    String?  @db.VarChar(100)
+  stars       Int      @default(0)
+  forks       Int      @default(0)
+  size        Int      @default(0)
+  private     Boolean  @default(false)
+  url         String   @db.Text
+  cloneUrl    String   @map("clone_url") @db.Text
+  createdAt   DateTime @map("created_at")
+  updatedAt   DateTime @map("updated_at")
+
+  evaluationProjects EvaluationProject[]
+
+  @@index([githubId])
+  @@index([language])
+  @@map("github_repositories")
+}
+
+model EvaluationProject {
+  id           Int               @id @default(autoincrement())
+  userId       Int               @map("user_id")
+  repositoryId Int               @map("repository_id")
+  order        Int               @default(0)
+  createdAt    DateTime          @default(now()) @map("created_at")
+  updatedAt    DateTime          @updatedAt @map("updated_at")
+
+  user       User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  repository GitHubRepository  @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  analyses   Analysis[]
+
+  @@unique([userId, repositoryId])
+  @@index([userId])
+  @@index([repositoryId])
+  @@map("evaluation_projects")
+}
+
+model Analysis {
+  id                Int      @id @default(autoincrement())
+  userId            Int      @map("user_id")
+  evaluationProjectId Int    @map("evaluation_project_id")
+  status            String   @default("pending") @db.VarChar(50)
+  score             Float?
+  grade             String?  @db.VarChar(10)
+  completedAt       DateTime? @map("completed_at")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  user              User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  evaluationProject EvaluationProject @relation(fields: [evaluationProjectId], references: [id], onDelete: Cascade)
+  metrics           AnalysisMetric[]
+  recommendations   Recommendation[]
+
+  @@index([userId])
+  @@index([evaluationProjectId])
+  @@index([status])
+  @@map("analyses")
+}
+
+model AnalysisMetric {
+  id         Int    @id @default(autoincrement())
+  analysisId Int    @map("analysis_id")
+  category   String @db.VarChar(100)
+  name       String @db.VarChar(255)
+  value      Float
+  maxValue   Float? @map("max_value")
+  weight     Float  @default(1.0)
+
+  analysis Analysis @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+
+  @@index([analysisId])
+  @@index([category])
+  @@map("analysis_metrics")
+}
+
+model Recommendation {
+  id          Int    @id @default(autoincrement())
+  analysisId  Int    @map("analysis_id")
+  category    String @db.VarChar(100)
+  title       String @db.VarChar(255)
+  description String @db.Text
+  priority    Int    @default(1)
+  estimatedHours Int? @map("estimated_hours")
+
+  analysis Analysis @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+
+  @@index([analysisId])
+  @@index([priority])
+  @@map("recommendations")
+}
+
+model UserActivity {
+  id        Int      @id @default(autoincrement())
+  userId    Int      @map("user_id")
+  type      String   @db.VarChar(100)
+  action    String   @db.VarChar(255)
+  metadata  Json?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([type])
+  @@index([createdAt])
+  @@map("user_activities")
+}
+
+model UserStats {
+  id                Int      @id @default(autoincrement())
+  userId            Int      @unique @map("user_id")
+  totalProjects     Int      @default(0) @map("total_projects")
+  completedAnalyses Int      @default(0) @map("completed_analyses")
+  averageScore      Float?   @map("average_score")
+  lastAnalysisAt    DateTime? @map("last_analysis_at")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_stats")
+}
+
+model UserRanking {
+  id           Int      @id @default(autoincrement())
+  userId       Int      @map("user_id")
+  category     String   @db.VarChar(100)
+  rank         Int
+  score        Float
+  percentile   Float
+  calculatedAt DateTime @default(now()) @map("calculated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, category])
+  @@index([category, rank])
+  @@index([calculatedAt])
+  @@map("user_rankings")
 }

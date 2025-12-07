@@ -11,3 +11,4 @@ coverage
 /src/generated/prisma
 
 .kiro
+prisma/migrations/migration_lock.toml
