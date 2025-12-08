@@ -1,23 +1,28 @@
 const analysisService = require('../services/analysis.service');
 const enhancedAnalysisService = require('../services/enhancedAnalysis.service');
+const evaluationProjectRepository = require('../repositories/evaluationProject.repository');
 
 const startEvaluationAnalysis = async (req, res, next) => {
   try {
     const userId = req.user.id;
-    const { evaluationProjectId, evaluationProjectIds, analysisType = 'basic', options = {} } = req.body;
+    const { analysisType = 'basic', options = {} } = req.body;
 
-    // Support both single project (legacy) and multiple projects (new comprehensive analysis)
-    if (!evaluationProjectId && !evaluationProjectIds) {
+    // Get user's registered evaluation projects
+    const evaluationProjects = await evaluationProjectRepository.findByUserId(userId);
+
+    // Check if user has any registered projects
+    if (!evaluationProjects || evaluationProjects.length === 0) {
       return res.status(400).json({
         success: false,
-        message: 'Evaluation project ID(s) are required'
+        message: 'No evaluation projects found. Please register projects first.'
       });
     }
 
+    const evaluationProjectIds = evaluationProjects.map(p => p.id);
     let analysis;
 
-    if (evaluationProjectIds && evaluationProjectIds.length > 0) {
-      // New comprehensive analysis
+    // Use comprehensive analysis for multiple projects
+    if (evaluationProjectIds.length > 1) {
       analysis = await enhancedAnalysisService.startComprehensiveAnalysis(userId, evaluationProjectIds, {
         ...options,
         analysisType
@@ -26,28 +31,25 @@ const startEvaluationAnalysis = async (req, res, next) => {
       return res.status(202).json({
         success: true,
         data: {
-          analysis: {
-            id: analysis.analysisId,
-            status: analysis.status,
-            analysisType: 'comprehensive',
-            projectsToAnalyze: analysis.projectsToAnalyze,
-            estimatedDuration: analysis.overallEstimatedDuration,
-            startedAt: analysis.startedAt,
-            queuePosition: analysis.queuePosition
-          }
+          analyses: analysis.analyses,
+          status: analysis.status,
+          projectsToAnalyze: analysis.projectsToAnalyze,
+          estimatedDuration: analysis.overallEstimatedDuration,
+          startedAt: analysis.startedAt
         },
         message: 'Comprehensive analysis started successfully'
       });
     } else {
-      // Legacy single project analysis
-      analysis = await analysisService.startAnalysis(userId, parseInt(evaluationProjectId));
+      // Single project analysis
+      analysis = await analysisService.startAnalysis(userId, evaluationProjectIds[0]);
 
-      return res.status(201).json({
+      return res.status(202).json({
         success: true,
         data: {
           analysis: {
             id: analysis.id,
             status: analysis.status,
+            projectsAnalyzed: 1,
             createdAt: analysis.createdAt
           }
         },

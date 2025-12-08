@@ -31,18 +31,20 @@ class EnhancedAnalysisService {
         }
       }
 
-      const analysisId = await this.generateAnalysisId();
+      // Create individual analyses for each project
+      const analyses = [];
+      for (const project of evaluationProjects) {
+        const analysis = await analysisRepository.create({
+          userId,
+          evaluationProjectId: project.id,
+          status: 'pending'
+        });
+        analyses.push(analysis);
+      }
 
-      const analysis = await analysisRepository.create({
-        id: analysisId,
-        userId,
-        status: 'started',
-        analysisType: options.analysisType || 'comprehensive',
-        options: options
-      });
-
+      // Start background processing for all analyses
       setImmediate(() => {
-        this.performComprehensiveAnalysis(analysisId, evaluationProjects, options).catch(error => {
+        this.performComprehensiveAnalysis(userId, analyses, evaluationProjects, options).catch(error => {
           console.error('Comprehensive analysis failed:', error);
         });
       });
@@ -52,24 +54,23 @@ class EnhancedAnalysisService {
         'analysis',
         `Started comprehensive analysis of ${evaluationProjects.length} projects`,
         {
-          analysisId,
+          analysisIds: analyses.map(a => a.id),
           evaluationProjectIds,
           analysisType: options.analysisType || 'comprehensive'
         }
       );
 
       return {
-        analysisId,
-        status: 'started',
-        projectsToAnalyze: evaluationProjects.map(project => ({
-          evaluationProjectId: project.id,
-          githubRepoName: project.repository.name,
-          status: 'queued',
-          estimatedDuration: '8-12 minutes'
+        analyses: analyses.map((analysis, idx) => ({
+          analysisId: analysis.id,
+          evaluationProjectId: analysis.evaluationProjectId,
+          githubRepoName: evaluationProjects[idx].repository.name,
+          status: 'pending'
         })),
+        status: 'started',
+        projectsToAnalyze: evaluationProjects.length,
         overallEstimatedDuration: `${evaluationProjects.length * 8}-${evaluationProjects.length * 15} minutes`,
-        startedAt: new Date(),
-        queuePosition: 1
+        startedAt: new Date()
       };
     } catch (error) {
       console.error('Error starting comprehensive analysis:', error);
@@ -77,75 +78,77 @@ class EnhancedAnalysisService {
     }
   }
 
-  async performComprehensiveAnalysis(analysisId, evaluationProjects, options) {
+  async performComprehensiveAnalysis(userId, analyses, evaluationProjects, options) {
     try {
-      await analysisRepository.updateStatus(analysisId, 'running');
-
       const projectResults = [];
-      const phases = [
-        'Repository Analysis',
-        'Code Quality Analysis',
-        'Project Structure Analysis',
-        'Contribution Pattern Analysis',
-        'Skill Assessment',
-        'Report Generation'
-      ];
 
-      await this.updateAnalysisPhase(analysisId, 'Repository Analysis', 'running');
-
-      for (let i = 0; i < evaluationProjects.length; i++) {
+      // Process each analysis
+      for (let i = 0; i < analyses.length; i++) {
+        const analysis = analyses[i];
         const project = evaluationProjects[i];
-        const result = await this.analyzeProject(project, options);
-        projectResults.push(result);
 
-        await this.updateAnalysisProgress(analysisId, ((i + 1) / evaluationProjects.length) * 100);
+        try {
+          await analysisRepository.updateStatus(analysis.id, 'processing');
+
+          const result = await this.analyzeProject(project, options);
+          projectResults.push({
+            ...result,
+            analysisId: analysis.id
+          });
+
+          // Update individual analysis with results
+          await analysisRepository.updateStatus(analysis.id, 'completed', {
+            score: result.score,
+            grade: result.grade,
+            completedAt: new Date()
+          });
+
+        } catch (error) {
+          console.error(`Analysis failed for project ${project.id}:`, error);
+          await analysisRepository.updateStatus(analysis.id, 'failed', {
+            completedAt: new Date()
+          });
+          projectResults.push({
+            evaluationProjectId: project.id,
+            analysisId: analysis.id,
+            error: error.message,
+            score: 0,
+            grade: 'F'
+          });
+        }
       }
 
-      await this.updateAnalysisPhase(analysisId, 'Code Quality Analysis', 'completed');
-      await this.updateAnalysisPhase(analysisId, 'Project Structure Analysis', 'completed');
-      await this.updateAnalysisPhase(analysisId, 'Contribution Pattern Analysis', 'completed');
-      await this.updateAnalysisPhase(analysisId, 'Skill Assessment', 'completed');
-      await this.updateAnalysisPhase(analysisId, 'Report Generation', 'running');
+      // 개별 분석들은 이미 DB에 저장됨
+      // UserStats의 averageScore를 재계산하여 종합 점수 업데이트
+      await userStatsRepository.updateAverageScore(userId);
 
-      const overallResults = await this.generateOverallResults(projectResults, options);
-
-      const finalAnalysis = await analysisRepository.updateWithResults(analysisId, {
-        status: 'completed',
-        completedAt: new Date(),
-        overallResults,
-        projectResults,
-        totalScore: overallResults.totalScore,
-        grade: overallResults.overallGrade
-      });
-
-      await this.updateAnalysisPhase(analysisId, 'Report Generation', 'completed');
-
-      await userStatsRepository.incrementAnalyses(
-        evaluationProjects[0].userId,
-        overallResults.totalScore
-      );
+      // 종합 분석 결과 생성 (대시보드 응답용)
+      const comprehensiveResults = await this.generateComprehensiveResults(projectResults, options);
 
       await userActivityRepository.logActivity(
-        evaluationProjects[0].userId,
+        userId,
         'analysis',
-        `Completed comprehensive analysis (Score: ${overallResults.totalScore.toFixed(1)}, Grade: ${overallResults.overallGrade})`,
+        `Completed comprehensive analysis (${comprehensiveResults.successfulCount}/${comprehensiveResults.projectCount} projects, Score: ${comprehensiveResults.overallScore.toFixed(1)})`,
         {
-          analysisId,
-          score: overallResults.totalScore,
-          grade: overallResults.overallGrade,
-          projectCount: projectResults.length
+          analysisIds: analyses.map(a => a.id),
+          projectCount: projectResults.length,
+          successfulCount: comprehensiveResults.successfulCount,
+          overallScore: comprehensiveResults.overallScore,
+          overallGrade: comprehensiveResults.overallGrade
         }
       );
 
-      return finalAnalysis;
+      return comprehensiveResults;
 
     } catch (error) {
       console.error('Comprehensive analysis processing failed:', error);
 
-      await analysisRepository.updateStatus(analysisId, 'failed', {
-        completedAt: new Date(),
-        error: error.message
-      });
+      // Mark all analyses as failed
+      for (const analysis of analyses) {
+        await analysisRepository.updateStatus(analysis.id, 'failed', {
+          completedAt: new Date()
+        }).catch(err => console.error('Failed to update analysis status:', err));
+      }
 
       throw error;
     }
@@ -156,10 +159,15 @@ class EnhancedAnalysisService {
     const [owner, repo] = repository.fullName.split('/');
     const user = evaluationProject.user;
 
+    if (!user) {
+      throw new Error('User information not found for evaluation project');
+    }
+
     if (!user.accessToken) {
       throw new Error('GitHub access token not found');
     }
 
+    // GitHub 데이터 수집 (Promise.allSettled로 일부 실패해도 계속 진행)
     const [languages, stats, fileContents, fileStructure, packageJson] = await Promise.allSettled([
       githubService.getRepositoryLanguages(owner, repo, user.accessToken),
       githubService.getRepositoryStats(owner, repo, user.accessToken),
@@ -168,40 +176,75 @@ class EnhancedAnalysisService {
       this.getPackageJson(owner, repo, user.accessToken)
     ]);
 
+    // 결과 추출 및 에러 로깅
+    const languagesData = languages.status === 'fulfilled' ? languages.value : null;
+    const statsData = stats.status === 'fulfilled' ? stats.value : null;
+    const fileContentsData = fileContents.status === 'fulfilled' ? fileContents.value : [];
+    const fileStructureData = fileStructure.status === 'fulfilled' ? fileStructure.value : [];
+    const packageJsonData = packageJson.status === 'fulfilled' ? packageJson.value : null;
+
+    // 실패한 데이터 로깅
+    if (languages.status === 'rejected') console.warn('Failed to fetch languages:', languages.reason?.message);
+    if (stats.status === 'rejected') console.warn('Failed to fetch stats:', stats.reason?.message);
+    if (fileContents.status === 'rejected') console.warn('Failed to fetch file contents:', fileContents.reason?.message);
+    if (fileStructure.status === 'rejected') console.warn('Failed to fetch file structure:', fileStructure.reason?.message);
+    if (packageJson.status === 'rejected') console.warn('Failed to fetch package.json:', packageJson.reason?.message);
+
     const analysisResults = {};
 
+    // AI 분석 수행 (각각 개별 try-catch로 일부 실패해도 계속 진행)
     if (options.includeCodeQuality !== false) {
-      analysisResults.codeQuality = await aiService.analyzeCodeQuality(
-        repository,
-        fileContents.value || [],
-        languages.value || []
-      );
+      try {
+        analysisResults.codeQuality = await aiService.analyzeCodeQuality(
+          repository,
+          fileContentsData,
+          languagesData || {}
+        );
+      } catch (error) {
+        console.error('Code quality analysis failed:', error);
+        analysisResults.codeQuality = aiService.getFallbackCodeQualityAnalysis(repository, languagesData);
+      }
     }
 
     if (options.includeProjectStructure !== false) {
-      analysisResults.projectStructure = await aiService.analyzeProjectStructure(
-        repository,
-        fileStructure.value || [],
-        packageJson.value
-      );
+      try {
+        analysisResults.projectStructure = await aiService.analyzeProjectStructure(
+          repository,
+          fileStructureData,
+          packageJsonData
+        );
+      } catch (error) {
+        console.error('Project structure analysis failed:', error);
+        analysisResults.projectStructure = aiService.getFallbackStructureAnalysis(repository);
+      }
     }
 
     if (options.includeContributionPattern !== false) {
-      analysisResults.contributionPattern = await this.analyzeContributionPattern(
-        repository,
-        stats.value
-      );
+      try {
+        analysisResults.contributionPattern = await this.analyzeContributionPattern(
+          repository,
+          statsData
+        );
+      } catch (error) {
+        console.error('Contribution pattern analysis failed:', error);
+        analysisResults.contributionPattern = { score: 50, metrics: {}, strengths: [], improvements: [], reasoning: 'Fallback analysis due to error' };
+      }
     }
 
     if (options.includeSkillAssessment !== false) {
-      analysisResults.skillAssessment = await aiService.analyzeSkillAssessment(
-        repository,
-        {
-          languages: languages.value || [],
-          stats: stats.value,
-          fileStructure: fileStructure.value || []
-        }
-      );
+      try {
+        analysisResults.skillAssessment = await aiService.analyzeSkillAssessment(
+          repository,
+          {
+            languages: languagesData || {},
+            stats: statsData,
+            fileStructure: fileStructureData
+          }
+        );
+      } catch (error) {
+        console.error('Skill assessment failed:', error);
+        analysisResults.skillAssessment = aiService.getFallbackSkillAnalysis(repository);
+      }
     }
 
     const projectScore = this.calculateProjectScore(analysisResults);
@@ -482,6 +525,157 @@ class EnhancedAnalysisService {
     } catch (error) {
       console.error('Error fetching analysis results:', error);
       throw error;
+    }
+  }
+
+  async generateComprehensiveResults(projectResults, options) {
+    const successfulResults = projectResults.filter(r => !r.error && r.score != null);
+    
+    if (successfulResults.length === 0) {
+      throw new Error('All project analyses failed');
+    }
+
+    // Calculate weighted average score
+    const totalWeight = successfulResults.reduce((sum, r) => sum + (r.weight || 1), 0);
+    const overallScore = successfulResults.reduce((sum, r) => {
+      const weight = r.weight || 1;
+      return sum + (r.score * weight);
+    }, 0) / totalWeight;
+
+    const overallGrade = this.calculateGrade(overallScore);
+
+    // Aggregate metrics across all projects
+    const aggregatedMetrics = this.aggregateMetrics(successfulResults);
+
+    // Generate comprehensive insights
+    const insights = this.generateComprehensiveInsights(successfulResults, aggregatedMetrics);
+
+    return {
+      overallScore,
+      overallGrade,
+      projectCount: projectResults.length,
+      successfulCount: successfulResults.length,
+      failedCount: projectResults.length - successfulResults.length,
+      projects: projectResults.map(r => ({
+        evaluationProjectId: r.evaluationProjectId,
+        analysisId: r.analysisId,
+        name: r.githubRepo?.name,
+        score: r.score,
+        grade: r.grade,
+        error: r.error
+      })),
+      aggregatedMetrics,
+      insights,
+      strengths: insights.strengths,
+      improvements: insights.improvements,
+      detailedAnalysis: successfulResults.map(r => ({
+        project: r.githubRepo,
+        score: r.score,
+        grade: r.grade,
+        metrics: r.analysis
+      }))
+    };
+  }
+
+  aggregateMetrics(projectResults) {
+    const metrics = {
+      codeQuality: { total: 0, count: 0 },
+      projectStructure: { total: 0, count: 0 },
+      contributionPattern: { total: 0, count: 0 },
+      skillAssessment: { total: 0, count: 0 },
+      languages: {},
+      totalProjects: projectResults.length
+    };
+
+    projectResults.forEach(result => {
+      if (result.analysis?.codeQuality?.score) {
+        metrics.codeQuality.total += result.analysis.codeQuality.score;
+        metrics.codeQuality.count++;
+      }
+      if (result.analysis?.projectStructure?.score) {
+        metrics.projectStructure.total += result.analysis.projectStructure.score;
+        metrics.projectStructure.count++;
+      }
+      if (result.analysis?.contributionPattern?.score) {
+        metrics.contributionPattern.total += result.analysis.contributionPattern.score;
+        metrics.contributionPattern.count++;
+      }
+      if (result.analysis?.skillAssessment?.score) {
+        metrics.skillAssessment.total += result.analysis.skillAssessment.score;
+        metrics.skillAssessment.count++;
+      }
+
+      // Aggregate languages
+      const lang = result.githubRepo?.language;
+      if (lang) {
+        metrics.languages[lang] = (metrics.languages[lang] || 0) + 1;
+      }
+    });
+
+    return {
+      averageCodeQuality: metrics.codeQuality.count > 0 ? metrics.codeQuality.total / metrics.codeQuality.count : 0,
+      averageProjectStructure: metrics.projectStructure.count > 0 ? metrics.projectStructure.total / metrics.projectStructure.count : 0,
+      averageContributionPattern: metrics.contributionPattern.count > 0 ? metrics.contributionPattern.total / metrics.contributionPattern.count : 0,
+      averageSkillAssessment: metrics.skillAssessment.count > 0 ? metrics.skillAssessment.total / metrics.skillAssessment.count : 0,
+      languages: metrics.languages,
+      totalProjects: metrics.totalProjects
+    };
+  }
+
+  generateComprehensiveInsights(projectResults, aggregatedMetrics) {
+    const strengths = [];
+    const improvements = [];
+    const summary = [];
+
+    // Analyze overall performance
+    if (aggregatedMetrics.averageCodeQuality >= 80) {
+      strengths.push('Consistently high code quality across projects');
+    } else if (aggregatedMetrics.averageCodeQuality < 60) {
+      improvements.push('Focus on improving code quality standards');
+    }
+
+    if (aggregatedMetrics.averageProjectStructure >= 80) {
+      strengths.push('Well-organized project structures');
+    } else if (aggregatedMetrics.averageProjectStructure < 60) {
+      improvements.push('Enhance project organization and architecture');
+    }
+
+    if (Object.keys(aggregatedMetrics.languages).length > 2) {
+      strengths.push('Diverse technology stack demonstrates versatility');
+    }
+
+    const topLanguage = Object.entries(aggregatedMetrics.languages)
+      .sort((a, b) => b[1] - a[1])[0];
+    if (topLanguage) {
+      summary.push(`Primary expertise in ${topLanguage[0]} (${topLanguage[1]} projects)`);
+    }
+
+    if (projectResults.length >= 3) {
+      strengths.push('Strong portfolio with multiple projects');
+    } else {
+      improvements.push('Build a more diverse project portfolio');
+    }
+
+    return {
+      strengths,
+      improvements,
+      summary: summary.join('. '),
+      overallAssessment: this.generateOverallAssessment(aggregatedMetrics)
+    };
+  }
+
+  generateOverallAssessment(metrics) {
+    const avgScore = (metrics.averageCodeQuality + metrics.averageProjectStructure + 
+                     metrics.averageContributionPattern + metrics.averageSkillAssessment) / 4;
+
+    if (avgScore >= 85) {
+      return 'Exceptional developer with strong technical skills across multiple areas';
+    } else if (avgScore >= 70) {
+      return 'Solid developer with good technical foundation and room for growth';
+    } else if (avgScore >= 55) {
+      return 'Developing skills with potential for improvement';
+    } else {
+      return 'Early-stage developer with foundational skills';
     }
   }
 }
