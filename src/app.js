@@ -9,6 +9,11 @@ const { getMonitoringService } = require('./services/monitoring.service');
 const swaggerUi = require('swagger-ui-express');
 const swaggerDocument = require('../swagger.json');
 
+// Handle BigInt serialization in JSON
+BigInt.prototype.toJSON = function() {
+  return this.toString();
+};
+
 const app = express();
 
 // Security middleware
@@ -83,8 +88,8 @@ app.use('/api/images', require('./routes/images.routes'));
 app.use('/api/users', require('./routes/user.routes'));
 app.use('/api/github', require('./routes/github.routes'));
 app.use('/api/evaluation', require('./routes/evaluationProject.routes'));
+app.use('/api/projects', require('./routes/evaluationProject.routes'));
 app.use('/api/analysis', require('./routes/analysis.routes'));
-app.use('/api/recommendations', require('./routes/recommendation.routes'));
 app.use('/api/monitoring', require('./routes/monitoring.routes'));
 
 // Error handler (must be last)
