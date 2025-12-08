@@ -21,6 +21,19 @@ const findById = async (id) => {
   });
 };
 
+const findByIds = async (ids) => {
+  return await prisma.evaluationProject.findMany({
+    where: {
+      id: { in: ids }
+    },
+    include: {
+      user: true,
+      repository: true,
+      analyses: true
+    }
+  });
+};
+
 const findByUserId = async (userId) => {
   return await prisma.evaluationProject.findMany({
     where: { userId },
@@ -114,6 +127,7 @@ const deleteByUserId = async (userId) => {
 module.exports = {
   findAll,
   findById,
+  findByIds,
   findByUserId,
   findByUserAndRepository,
   countByUserId,
