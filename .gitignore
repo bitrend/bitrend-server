@@ -8,6 +8,10 @@ yarn-error.log
 dist
 coverage
 
+# Logs
+logs/
+*.log
+
 /src/generated/prisma
 
 .kiro
