@@ -91,6 +91,7 @@ app.use('/api/evaluation', require('./routes/evaluationProject.routes'));
 app.use('/api/projects', require('./routes/evaluationProject.routes'));
 app.use('/api/analysis', require('./routes/analysis.routes'));
 app.use('/api/monitoring', require('./routes/monitoring.routes'));
+app.use('/api/dashboard', require('./routes/dashboard.routes'));
 
 // Error handler (must be last)
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
