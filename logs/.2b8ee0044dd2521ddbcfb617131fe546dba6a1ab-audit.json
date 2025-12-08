@@ -1,0 +1,15 @@
+{
+    "keep": {
+        "days": true,
+        "amount": 30
+    },
+    "auditLog": "/Users/stephankim/projects/bitrend/bitrend-server/logs/.2b8ee0044dd2521ddbcfb617131fe546dba6a1ab-audit.json",
+    "files": [
+        {
+            "date": 1765122278511,
+            "name": "/Users/stephankim/projects/bitrend/bitrend-server/logs/error-2025-12-08.log",
+            "hash": "73e92b4260214a747826884be394d15be129920d3d1c282de9b5cdb1367e36cc"
+        }
+    ],
+    "hashType": "sha256"
+}
