@@ -106,6 +106,8 @@ model AnalysisMetric {
 
   @@index([analysisId])
   @@index([category])
+  @@index([analysisId, category])
+  @@index([name])
   @@map("analysis_metrics")
 }
 
@@ -138,6 +140,8 @@ model UserActivity {
   @@index([userId])
   @@index([type])
   @@index([createdAt])
+  @@index([userId, type])
+  @@index([userId, createdAt])
   @@map("user_activities")
 }
 
@@ -170,5 +174,7 @@ model UserRanking {
   @@unique([userId, category])
   @@index([category, rank])
   @@index([calculatedAt])
+  @@index([category, score])
+  @@index([rank])
   @@map("user_rankings")
 }
