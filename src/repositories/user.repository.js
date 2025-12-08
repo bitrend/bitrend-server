@@ -1,4 +1,4 @@
-const prisma = require('../config/prisma');
+const prisma = require("../config/prisma");
 
 const findAll = async () => {
   return await prisma.user.findMany();
@@ -6,19 +6,25 @@ const findAll = async () => {
 
 const findById = async (id) => {
   return await prisma.user.findUnique({
-    where: { id }
+    where: { id },
   });
 };
 
 const findByGithubId = async (githubId) => {
   return await prisma.user.findUnique({
-    where: { githubId }
+    where: { githubId },
+  });
+};
+
+const findByUsername = async (username) => {
+  return await prisma.user.findFirst({
+    where: { username },
   });
 };
 
 const create = async (userData) => {
   return await prisma.user.create({
-    data: userData
+    data: userData,
   });
 };
 
@@ -30,8 +36,8 @@ const createFromGithub = async (githubUser, accessToken) => {
       name: githubUser.name,
       email: githubUser.email,
       avatarUrl: githubUser.avatar_url,
-      accessToken: accessToken
-    }
+      accessToken: accessToken,
+    },
   });
 };
 
@@ -43,15 +49,15 @@ const updateFromGithub = async (id, githubUser, accessToken) => {
       name: githubUser.name,
       email: githubUser.email,
       avatarUrl: githubUser.avatar_url,
-      accessToken: accessToken
-    }
+      accessToken: accessToken,
+    },
   });
 };
 
 const update = async (id, updateData) => {
   return await prisma.user.update({
     where: { id },
-    data: updateData
+    data: updateData,
   });
 };
 
@@ -59,8 +65,9 @@ module.exports = {
   findAll,
   findById,
   findByGithubId,
+  findByUsername,
   create,
   createFromGithub,
   updateFromGithub,
-  update
+  update,
 };
