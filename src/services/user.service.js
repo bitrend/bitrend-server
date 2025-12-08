@@ -2,7 +2,11 @@ const userRepository = require('../repositories/user.repository');
 const githubService = require('./github.service');
 
 const getAllUsers = async () => {
-  return await userRepository.findAll();
+  const users = await userRepository.findAll();
+  return users.map(user => ({
+    ...user,
+    githubId: user.githubId.toString()
+  }));
 };
 
 const getUserById = async (id) => {
