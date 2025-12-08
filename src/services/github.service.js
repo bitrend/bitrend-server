@@ -1,6 +1,7 @@
 const axios = require('axios');
 
 const GITHUB_API_BASE = 'https://api.github.com';
+const GITHUB_GRAPHQL_API = 'https://api.github.com/graphql';
 const RATE_LIMIT_DELAY = 1000;
 
 /**
@@ -39,6 +40,49 @@ const githubRequest = async (url, accessToken, retries = 3) => {
     if (error.response?.status >= 500 && retries > 0) {
       await new Promise(resolve => setTimeout(resolve, RATE_LIMIT_DELAY));
       return githubRequest(url, accessToken, retries - 1);
+    }
+
+    throw error;
+  }
+};
+
+/**
+ * GitHub GraphQL API 요청 헬퍼
+ */
+const githubGraphQLRequest = async (query, variables, accessToken, retries = 3) => {
+  try {
+    const response = await axios.post(
+      GITHUB_GRAPHQL_API,
+      { query, variables },
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+
+    if (response.data.errors) {
+      throw new Error(`GraphQL Error: ${JSON.stringify(response.data.errors)}`);
+    }
+
+    return response.data.data;
+  } catch (error) {
+    if (error.response?.status === 401) {
+      const err = new Error('GitHub 인증이 만료되었습니다.');
+      err.code = 'UNAUTHORIZED';
+      err.statusCode = 401;
+      throw err;
+    }
+
+    if (error.response?.status === 403 && retries > 0) {
+      await new Promise(resolve => setTimeout(resolve, RATE_LIMIT_DELAY));
+      return githubGraphQLRequest(query, variables, accessToken, retries - 1);
+    }
+
+    if (error.response?.status >= 500 && retries > 0) {
+      await new Promise(resolve => setTimeout(resolve, RATE_LIMIT_DELAY));
+      return githubGraphQLRequest(query, variables, accessToken, retries - 1);
     }
 
     throw error;
@@ -274,9 +318,166 @@ const getRepositoryLanguages = async (owner, repo, accessToken) => {
 };
 
 /**
- * 리포지토리 통계 정보 조회
+ * 리포지토리 통계 정보 조회 (GraphQL 사용)
  */
 const getRepositoryStats = async (owner, repo, accessToken) => {
+  try {
+    const query = `
+      query($owner: String!, $repo: String!) {
+        repository(owner: $owner, name: $repo) {
+          name
+          description
+          primaryLanguage {
+            name
+          }
+          languages(first: 10, orderBy: {field: SIZE, direction: DESC}) {
+            edges {
+              size
+              node {
+                name
+                color
+              }
+            }
+          }
+          stargazerCount
+          forkCount
+          watchers {
+            totalCount
+          }
+          issues(states: OPEN) {
+            totalCount
+          }
+          pullRequests(states: OPEN) {
+            totalCount
+          }
+          defaultBranchRef {
+            name
+            target {
+              ... on Commit {
+                history(first: 100) {
+                  totalCount
+                  nodes {
+                    committedDate
+                    author {
+                      name
+                      email
+                      user {
+                        login
+                      }
+                    }
+                    additions
+                    deletions
+                  }
+                }
+              }
+            }
+          }
+          collaborators {
+            totalCount
+          }
+          createdAt
+          updatedAt
+          pushedAt
+        }
+      }
+    `;
+
+    const data = await githubGraphQLRequest(query, { owner, repo }, accessToken);
+    const repository = data.repository;
+
+    if (!repository) {
+      throw new Error('Repository not found');
+    }
+
+    // 커밋 히스토리 분석
+    const commits = repository.defaultBranchRef?.target?.history?.nodes || [];
+    const totalCommits = repository.defaultBranchRef?.target?.history?.totalCount || 0;
+    
+    // 기여자별 커밋 집계
+    const contributorMap = new Map();
+    commits.forEach(commit => {
+      const author = commit.author?.user?.login || commit.author?.email || 'Unknown';
+      if (!contributorMap.has(author)) {
+        contributorMap.set(author, {
+          commits: 0,
+          additions: 0,
+          deletions: 0
+        });
+      }
+      const stats = contributorMap.get(author);
+      stats.commits += 1;
+      stats.additions += commit.additions || 0;
+      stats.deletions += commit.deletions || 0;
+    });
+
+    // 언어 통계
+    const languages = {};
+    let totalSize = 0;
+    repository.languages.edges.forEach(edge => {
+      languages[edge.node.name] = {
+        size: edge.size,
+        color: edge.node.color,
+        percentage: 0
+      };
+      totalSize += edge.size;
+    });
+    
+    // 언어별 비율 계산
+    Object.keys(languages).forEach(lang => {
+      languages[lang].percentage = ((languages[lang].size / totalSize) * 100).toFixed(2);
+    });
+
+    return {
+      basic: {
+        name: repository.name,
+        description: repository.description,
+        primaryLanguage: repository.primaryLanguage?.name,
+        stars: repository.stargazerCount,
+        forks: repository.forkCount,
+        watchers: repository.watchers.totalCount,
+        openIssues: repository.issues.totalCount,
+        openPRs: repository.pullRequests.totalCount,
+        createdAt: repository.createdAt,
+        updatedAt: repository.updatedAt,
+        pushedAt: repository.pushedAt
+      },
+      languages,
+      totalCommits,
+      contributorsCount: repository.collaborators?.totalCount || contributorMap.size,
+      contributors: Array.from(contributorMap.entries()).map(([login, stats]) => ({
+        login,
+        commits: stats.commits,
+        additions: stats.additions,
+        deletions: stats.deletions
+      })),
+      lastCommitDate: commits[0]?.committedDate || repository.pushedAt,
+      commitActivity: {
+        recentCommits: commits.length,
+        totalAdditions: commits.reduce((sum, c) => sum + (c.additions || 0), 0),
+        totalDeletions: commits.reduce((sum, c) => sum + (c.deletions || 0), 0)
+      },
+      branchCount: 1 // GraphQL로는 모든 브랜치 조회가 비효율적이므로 기본값
+    };
+  } catch (error) {
+    console.error('Error fetching repository stats with GraphQL:', error.message);
+    
+    // Scope 부족 에러 체크
+    if (error.message?.includes('INSUFFICIENT_SCOPES')) {
+      console.warn('⚠️  GitHub token scope 부족 - 사용자 재인증 필요');
+      console.warn('필요한 scope: repo 또는 public_repo');
+      console.warn('현재 프론트엔드 로그인 URL에 다음 scope 추가 필요:');
+      console.warn('https://github.com/login/oauth/authorize?client_id=YOUR_CLIENT_ID&scope=repo,user:email');
+    }
+    
+    // Fallback to REST API
+    return getRepositoryStatsREST(owner, repo, accessToken);
+  }
+};
+
+/**
+ * 리포지토리 통계 정보 조회 (REST API Fallback)
+ */
+const getRepositoryStatsREST = async (owner, repo, accessToken) => {
   try {
     const [repoDetails, languages, commits, contributors] = await Promise.allSettled([
       getRepositoryDetails(owner, repo, accessToken),
@@ -287,7 +488,7 @@ const getRepositoryStats = async (owner, repo, accessToken) => {
 
     const stats = {
       basic: repoDetails.status === 'fulfilled' ? repoDetails.value : null,
-      languages: languages.status === 'fulfilled' ? languages.value : [],
+      languages: languages.status === 'fulfilled' ? languages.value : {},
       totalCommits: 0,
       contributorsCount: 0,
       lastCommitDate: null
@@ -465,12 +666,14 @@ const getRepositoryPullRequests = async (owner, repo, accessToken) => {
 
 module.exports = {
   githubRequest,
+  githubGraphQLRequest,
   getUserStats,
   getUserActivities,
   getUserRepositories,
   getRepositoryDetails,
   getRepositoryLanguages,
   getRepositoryStats,
+  getRepositoryStatsREST,
   getRepositoryFiles,
   getRepositoryStructure,
   getPackageJson,
