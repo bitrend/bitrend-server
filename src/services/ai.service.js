@@ -32,10 +32,23 @@ class AIService {
       const jsonMatch = text.match(/```json\s*([\s\S]*?)\s*```/) || text.match(/```\s*([\s\S]*?)\s*```/);
       const jsonText = jsonMatch ? jsonMatch[1].trim() : text.trim();
 
-      const analysis = JSON.parse(jsonText);
+      let analysis;
+      try {
+        analysis = JSON.parse(jsonText);
+      } catch (parseError) {
+        console.warn('AI returned non-JSON response, using fallback. Response:', text.substring(0, 200) + '...');
+        return this.getFallbackCodeQualityAnalysis(repositoryData, languageStats);
+      }
+
+      // AI가 null이나 유효하지 않은 점수를 반환하면 fallback 사용
+      if (analysis.score === null || analysis.score === undefined ||
+          typeof analysis.score !== 'number' || analysis.score < 0) {
+        console.warn('AI returned invalid score, using fallback:', analysis.score);
+        return this.getFallbackCodeQualityAnalysis(repositoryData, languageStats);
+      }
 
       return {
-        score: analysis.score,
+        score: Math.min(Math.max(analysis.score, 0), 100), // 0-100 범위 보장
         metrics: {
           maintainabilityIndex: analysis.maintainabilityIndex || 75,
           cyclomaticComplexity: analysis.cyclomaticComplexity || 8,
@@ -69,10 +82,23 @@ class AIService {
       const jsonMatch = text.match(/```json\s*([\s\S]*?)\s*```/) || text.match(/```\s*([\s\S]*?)\s*```/);
       const jsonText = jsonMatch ? jsonMatch[1].trim() : text.trim();
 
-      const analysis = JSON.parse(jsonText);
+      let analysis;
+      try {
+        analysis = JSON.parse(jsonText);
+      } catch (parseError) {
+        console.warn('AI returned non-JSON response, using fallback. Response:', text.substring(0, 200) + '...');
+        return this.getFallbackStructureAnalysis(repositoryData);
+      }
+
+      // AI가 null이나 유효하지 않은 점수를 반환하면 fallback 사용
+      if (analysis.score === null || analysis.score === undefined ||
+          typeof analysis.score !== 'number' || analysis.score < 0) {
+        console.warn('AI returned invalid project structure score, using fallback:', analysis.score);
+        return this.getFallbackStructureAnalysis(repositoryData);
+      }
 
       return {
-        score: analysis.score,
+        score: Math.min(Math.max(analysis.score, 0), 100),
         metrics: {
           architectureScore: analysis.architectureScore || 80,
           organizationScore: analysis.organizationScore || 85,
@@ -105,10 +131,23 @@ class AIService {
       const jsonMatch = text.match(/```json\s*([\s\S]*?)\s*```/) || text.match(/```\s*([\s\S]*?)\s*```/);
       const jsonText = jsonMatch ? jsonMatch[1].trim() : text.trim();
 
-      const analysis = JSON.parse(jsonText);
+      let analysis;
+      try {
+        analysis = JSON.parse(jsonText);
+      } catch (parseError) {
+        console.warn('AI returned non-JSON response, using fallback. Response:', text.substring(0, 200) + '...');
+        return this.getFallbackSkillAnalysis(repositoryData);
+      }
+
+      // AI가 null이나 유효하지 않은 점수를 반환하면 fallback 사용
+      if (analysis.score === null || analysis.score === undefined ||
+          typeof analysis.score !== 'number' || analysis.score < 0) {
+        console.warn('AI returned invalid skill assessment score, using fallback:', analysis.score);
+        return this.getFallbackSkillAnalysis(repositoryData);
+      }
 
       return {
-        score: analysis.score,
+        score: Math.min(Math.max(analysis.score, 0), 100),
         skillLevel: analysis.skillLevel || 'Intermediate',
         technicalProficiency: analysis.technicalProficiency || {},
         frameworkMastery: analysis.frameworkMastery || 75,
