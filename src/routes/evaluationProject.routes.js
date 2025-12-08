@@ -11,8 +11,16 @@ router.post('/projects', evaluationProjectController.addProject);
 
 router.put('/projects/reorder', evaluationProjectController.reorderProjects);
 
+router.get('/evaluations', evaluationProjectController.getProjects);
+
+router.post('/evaluations', evaluationProjectController.addProject);
+
 router.get('/projects/:id', evaluationProjectController.getProjectById);
 
 router.delete('/projects/:id', evaluationProjectController.removeProject);
+
+router.delete('/evaluations/:id', evaluationProjectController.removeProject);
+
+router.delete('/:id', evaluationProjectController.removeProject);
 
 module.exports = router;
