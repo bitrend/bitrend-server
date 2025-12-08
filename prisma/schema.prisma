@@ -8,16 +8,22 @@ datasource db {
 }
 
 model User {
-  id          Int      @id @default(autoincrement())
-  githubId    BigInt   @unique @map("github_id")
-  username    String   @db.VarChar(255)
-  name        String?  @db.VarChar(255)
-  email       String?  @db.VarChar(255)
-  avatarUrl   String?  @map("avatar_url") @db.Text
-  role        String?  @db.VarChar(100)
-  accessToken String?  @map("access_token") @db.Text
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  id              Int      @id @default(autoincrement())
+  githubId        BigInt   @unique @map("github_id")
+  username        String   @db.VarChar(255)
+  name            String?  @db.VarChar(255)
+  email           String?  @db.VarChar(255)
+  avatarUrl       String?  @map("avatar_url")
+  role            String?  @db.VarChar(100)
+  accessToken     String?  @map("access_token")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+  followerCount   Int?     @default(0) @map("follower_count")
+  followingCount  Int?     @default(0) @map("following_count")
+  repositoryCount Int?     @default(0) @map("repository_count")
+
+  followers Follow[] @relation("UserFollowers")
+  following Follow[] @relation("UserFollowing")
 
   evaluationProjects EvaluationProject[]
   analyses           Analysis[]
@@ -27,6 +33,7 @@ model User {
 
   @@index([githubId])
   @@index([username])
+  @@index([name])
   @@map("users")
 }
 
@@ -177,4 +184,15 @@ model UserRanking {
   @@index([category, score])
   @@index([rank])
   @@map("user_rankings")
+}
+model Follow {
+  followerId  Int
+  followingId Int
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  follower  User @relation("UserFollowers", fields: [followerId], references: [id], onDelete: Cascade)
+  following User @relation("UserFollowing", fields: [followingId], references: [id], onDelete: Cascade)
+
+  @@id([followerId, followingId])
+  @@map("follows")
 }
