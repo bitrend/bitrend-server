@@ -98,6 +98,7 @@ const incrementAnalyses = async (userId, score = null) => {
 };
 
 const updateAverageScore = async (userId) => {
+  // 모든 완료된 분석의 총점을 가져와서 평균 계산 (AI가 이미 가중치 적용해서 계산함)
   const analyses = await prisma.analysis.findMany({
     where: {
       userId,
@@ -114,7 +115,16 @@ const updateAverageScore = async (userId) => {
     });
   }
 
-  const averageScore = analyses.reduce((sum, analysis) => sum + analysis.score, 0) / analyses.length;
+  // 각 프로젝트의 총점들을 단순 평균 (AI가 이미 35%, 25%, 20%, 20% 가중치 적용함)
+  const totalScore = analyses.reduce((sum, analysis) => sum + analysis.score, 0);
+  const averageScore = totalScore / analyses.length;
+
+  console.log(`종합 점수 계산 완료 (User ${userId}):`, {
+    projectScores: analyses.map(a => a.score.toFixed(1)),
+    totalScore: totalScore.toFixed(1),
+    averageScore: averageScore.toFixed(1),
+    projectCount: analyses.length
+  });
 
   return await prisma.userStats.update({
     where: { userId },

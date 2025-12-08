@@ -1,9 +1,10 @@
 const { GoogleGenerativeAI } = require('@google/generative-ai');
+const { analysisLogger } = require('../config/logger');
 
 class AIService {
   constructor() {
     if (!process.env.GEMINI_API_KEY) {
-      console.warn('GEMINI_API_KEY not set. AI analysis features will be disabled.');
+      analysisLogger.warn('🤖 AI 기능이 비활성화되었습니다 (GEMINI_API_KEY 없음)');
       this.enabled = false;
       return;
     }
@@ -11,6 +12,7 @@ class AIService {
     this.genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
     this.model = this.genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
     this.enabled = true;
+    analysisLogger.info('🤖 AI 분석 서비스가 활성화되었습니다 (Gemini 2.5 Flash)');
   }
 
   isEnabled() {
@@ -19,14 +21,17 @@ class AIService {
 
   async analyzeCodeQuality(repositoryData, fileContents = [], languageStats = {}) {
     if (!this.enabled) {
+      analysisLogger.warn('📊 코드 품질 분석: AI 비활성화 상태로 기본 분석 사용');
       return this.getFallbackCodeQualityAnalysis(repositoryData, languageStats);
     }
 
     try {
+      analysisLogger.info(`📊 코드 품질 AI 분석 시작: ${repositoryData.name} (${repositoryData.language})`);
       const prompt = this.buildCodeQualityPrompt(repositoryData, fileContents, languageStats);
       const result = await this.model.generateContent(prompt);
       const response = await result.response;
       const text = response.text();
+      analysisLogger.debug('📊 AI 응답 길이:', { responseLength: text.length });
 
       // Extract JSON from markdown code blocks if present
       const jsonMatch = text.match(/```json\s*([\s\S]*?)\s*```/) || text.match(/```\s*([\s\S]*?)\s*```/);
@@ -36,19 +41,30 @@ class AIService {
       try {
         analysis = JSON.parse(jsonText);
       } catch (parseError) {
-        console.warn('AI returned non-JSON response, using fallback. Response:', text.substring(0, 200) + '...');
+        analysisLogger.warn('⚠️ AI 응답 파싱 실패, 기본 분석으로 전환', {
+          responsePreview: text.substring(0, 200) + '...',
+          parseError: parseError.message
+        });
         return this.getFallbackCodeQualityAnalysis(repositoryData, languageStats);
       }
 
       // AI가 null이나 유효하지 않은 점수를 반환하면 fallback 사용
       if (analysis.score === null || analysis.score === undefined ||
           typeof analysis.score !== 'number' || analysis.score < 0) {
-        console.warn('AI returned invalid score, using fallback:', analysis.score);
+        analysisLogger.warn('⚠️ AI가 유효하지 않은 점수를 반환, 기본 분석으로 전환', { invalidScore: analysis.score });
         return this.getFallbackCodeQualityAnalysis(repositoryData, languageStats);
       }
 
+      const finalScore = Math.min(Math.max(analysis.score, 0), 150);
+      analysisLogger.info('✅ 코드 품질 AI 분석 완료', {
+        repository: repositoryData.name,
+        score: finalScore,
+        strengthsCount: (analysis.strengths || []).length,
+        improvementsCount: (analysis.improvements || []).length
+      });
+
       return {
-        score: Math.min(Math.max(analysis.score, 0), 100), // 0-100 범위 보장
+        score: finalScore, // 0-100 범위 보장
         metrics: {
           maintainabilityIndex: analysis.maintainabilityIndex || 75,
           cyclomaticComplexity: analysis.cyclomaticComplexity || 8,
@@ -62,17 +78,25 @@ class AIService {
         reasoning: analysis.reasoning || ''
       };
     } catch (error) {
-      console.error('AI code quality analysis failed:', error);
+      analysisLogger.error('❌ 코드 품질 AI 분석 실패, 기본 분석으로 전환', {
+        repository: repositoryData.name,
+        error: error.message
+      });
       return this.getFallbackCodeQualityAnalysis(repositoryData, languageStats);
     }
   }
 
   async analyzeProjectStructure(repositoryData, fileStructure = [], packageJson = null) {
     if (!this.enabled) {
+      analysisLogger.warn('🏗️ 프로젝트 구조 분석: AI 비활성화 상태로 기본 분석 사용');
       return this.getFallbackStructureAnalysis(repositoryData);
     }
 
     try {
+      analysisLogger.info(`🏗️ 프로젝트 구조 AI 분석 시작: ${repositoryData.name}`, {
+        fileCount: fileStructure.length,
+        hasPackageJson: !!packageJson
+      });
       const prompt = this.buildProjectStructurePrompt(repositoryData, fileStructure, packageJson);
       const result = await this.model.generateContent(prompt);
       const response = await result.response;
@@ -86,19 +110,30 @@ class AIService {
       try {
         analysis = JSON.parse(jsonText);
       } catch (parseError) {
-        console.warn('AI returned non-JSON response, using fallback. Response:', text.substring(0, 200) + '...');
+        analysisLogger.warn('⚠️ AI 프로젝트 구조 분석 응답 파싱 실패, 기본 분석으로 전환', {
+          responsePreview: text.substring(0, 200) + '...',
+          parseError: parseError.message
+        });
         return this.getFallbackStructureAnalysis(repositoryData);
       }
 
       // AI가 null이나 유효하지 않은 점수를 반환하면 fallback 사용
       if (analysis.score === null || analysis.score === undefined ||
           typeof analysis.score !== 'number' || analysis.score < 0) {
-        console.warn('AI returned invalid project structure score, using fallback:', analysis.score);
+        analysisLogger.warn('⚠️ AI가 유효하지 않은 구조 점수를 반환, 기본 분석으로 전환', { invalidScore: analysis.score });
         return this.getFallbackStructureAnalysis(repositoryData);
       }
 
+      const finalScore = Math.min(Math.max(analysis.score, 0), 120);
+      analysisLogger.info('✅ 프로젝트 구조 AI 분석 완료', {
+        repository: repositoryData.name,
+        score: finalScore,
+        detectedPatternsCount: (analysis.detectedPatterns || []).length,
+        architectureScore: analysis.architectureScore || 80
+      });
+
       return {
-        score: Math.min(Math.max(analysis.score, 0), 100),
+        score: finalScore,
         metrics: {
           architectureScore: analysis.architectureScore || 80,
           organizationScore: analysis.organizationScore || 85,
@@ -111,17 +146,25 @@ class AIService {
         reasoning: analysis.reasoning || ''
       };
     } catch (error) {
-      console.error('AI project structure analysis failed:', error);
+      analysisLogger.error('❌ 프로젝트 구조 AI 분석 실패, 기본 분석으로 전환', {
+        repository: repositoryData.name,
+        error: error.message
+      });
       return this.getFallbackStructureAnalysis(repositoryData);
     }
   }
 
   async analyzeSkillAssessment(repositoryData, technicalIndicators = {}) {
     if (!this.enabled) {
+      analysisLogger.warn('🎓 기술 역량 분석: AI 비활성화 상태로 기본 분석 사용');
       return this.getFallbackSkillAnalysis(repositoryData);
     }
 
     try {
+      analysisLogger.info(`🎓 기술 역량 AI 분석 시작: ${repositoryData.name}`, {
+        totalCommits: technicalIndicators.totalCommits,
+        contributorsCount: technicalIndicators.contributorsCount
+      });
       const prompt = this.buildSkillAssessmentPrompt(repositoryData, technicalIndicators);
       const result = await this.model.generateContent(prompt);
       const response = await result.response;
@@ -135,19 +178,30 @@ class AIService {
       try {
         analysis = JSON.parse(jsonText);
       } catch (parseError) {
-        console.warn('AI returned non-JSON response, using fallback. Response:', text.substring(0, 200) + '...');
+        analysisLogger.warn('⚠️ AI 기술 역량 분석 응답 파싱 실패, 기본 분석으로 전환', {
+          responsePreview: text.substring(0, 200) + '...',
+          parseError: parseError.message
+        });
         return this.getFallbackSkillAnalysis(repositoryData);
       }
 
       // AI가 null이나 유효하지 않은 점수를 반환하면 fallback 사용
       if (analysis.score === null || analysis.score === undefined ||
           typeof analysis.score !== 'number' || analysis.score < 0) {
-        console.warn('AI returned invalid skill assessment score, using fallback:', analysis.score);
+        analysisLogger.warn('⚠️ AI가 유효하지 않은 기술 역량 점수를 반환, 기본 분석으로 전환', { invalidScore: analysis.score });
         return this.getFallbackSkillAnalysis(repositoryData);
       }
 
+      const finalScore = Math.min(Math.max(analysis.score, 0), 100);
+      analysisLogger.info('✅ 기술 역량 AI 분석 완료', {
+        repository: repositoryData.name,
+        score: finalScore,
+        skillLevel: analysis.skillLevel || 'Intermediate',
+        detectedSkillsCount: (analysis.detectedSkills || []).length
+      });
+
       return {
-        score: Math.min(Math.max(analysis.score, 0), 100),
+        score: finalScore,
         skillLevel: analysis.skillLevel || 'Intermediate',
         technicalProficiency: analysis.technicalProficiency || {},
         frameworkMastery: analysis.frameworkMastery || 75,
@@ -157,17 +211,26 @@ class AIService {
         reasoning: analysis.reasoning || ''
       };
     } catch (error) {
-      console.error('AI skill assessment failed:', error);
+      analysisLogger.error('❌ 기술 역량 AI 분석 실패, 기본 분석으로 전환', {
+        repository: repositoryData.name,
+        error: error.message
+      });
       return this.getFallbackSkillAnalysis(repositoryData);
     }
   }
 
   async generateRecommendations(allAnalysisResults, userContext = {}) {
     if (!this.enabled) {
+      analysisLogger.warn('💡 개선 추천 생성: AI 비활성화 상태로 기본 추천 사용');
       return this.getFallbackRecommendations(allAnalysisResults);
     }
 
     try {
+      analysisLogger.info('💡 개선 추천 AI 생성 시작', {
+        codeQualityScore: allAnalysisResults.codeQuality?.score,
+        structureScore: allAnalysisResults.projectStructure?.score,
+        skillScore: allAnalysisResults.skillAssessment?.score
+      });
       const prompt = this.buildRecommendationsPrompt(allAnalysisResults, userContext);
       const result = await this.model.generateContent(prompt);
       const response = await result.response;
@@ -178,6 +241,11 @@ class AIService {
       const jsonText = jsonMatch ? jsonMatch[1].trim() : text.trim();
 
       const recommendations = JSON.parse(jsonText);
+
+      analysisLogger.info('✅ 개선 추천 AI 생성 완료', {
+        recommendationsCount: recommendations.length,
+        highPriorityCount: recommendations.filter(r => r.priority === 'high').length
+      });
 
       return recommendations.map(rec => ({
         priority: rec.priority || 'medium',
@@ -191,7 +259,9 @@ class AIService {
         reasoning: rec.reasoning || ''
       }));
     } catch (error) {
-      console.error('AI recommendations generation failed:', error);
+      analysisLogger.error('❌ 개선 추천 AI 생성 실패, 기본 추천으로 전환', {
+        error: error.message
+      });
       return this.getFallbackRecommendations(allAnalysisResults);
     }
   }
@@ -216,9 +286,18 @@ File: ${file.name}
 ${file.content.substring(0, 500)}...
 `).join('\n')}
 
+IMPORTANT: Our scoring system uses a bit-based tier system where:
+- Intern level: 0-127 bytes (0-1016 bits)
+- Junior Dev: 128-255 bytes (1024-2040 bits)
+- Senior Dev: 256-767 bytes (2048-6136 bits)
+- Architect: 768+ bytes (6144+ bits)
+
+Score projects realistically - typical good projects should score 50-90 bits (representing solid code quality).
+Exceptional projects with advanced patterns, testing, and architecture might score 100+ bits.
+
 Please analyze and return a JSON response with:
 {
-  "score": (0-100 integer representing overall code quality),
+  "score": (0-150 bits representing code quality level - consider project complexity and skill demonstration),
   "maintainabilityIndex": (0-100 float),
   "cyclomaticComplexity": (average complexity score),
   "cognitiveComplexity": (average cognitive complexity),
@@ -231,6 +310,7 @@ Please analyze and return a JSON response with:
 }
 
 Focus on: code organization, naming conventions, complexity, documentation, testing patterns, and language-specific best practices.
+Score should reflect realistic skill level - most projects should score 30-90 bits unless exceptional.
 `;
   }
 
@@ -247,9 +327,12 @@ ${fileStructure.slice(0, 20).join('\n')}
 Package.json Dependencies:
 ${packageJson ? JSON.stringify(packageJson.dependencies, null, 2) : 'Not available'}
 
+IMPORTANT: Our scoring system uses bits where typical good projects score 40-80 bits for structure.
+Projects with excellent architecture, patterns, and organization might score 90+ bits.
+
 Return JSON analysis:
 {
-  "score": (0-100 overall structure score),
+  "score": (0-120 bits overall structure score),
   "architectureScore": (0-100),
   "organizationScore": (0-100),
   "conventionsScore": (0-100),
@@ -261,6 +344,7 @@ Return JSON analysis:
 }
 
 Evaluate: directory organization, separation of concerns, architectural patterns, dependency management, and scalability indicators.
+Score realistically based on demonstrated architectural skills - most projects should score 30-80 bits.
 `;
   }
 
@@ -277,9 +361,14 @@ Repository Stats:
 - Contributors: ${technicalIndicators.contributorsCount || 1}
 - Last Updated: ${repositoryData.updatedAt}
 
+IMPORTANT: Our scoring system uses bits for skill assessment. Typical scores:
+- Basic projects: 20-50 bits
+- Good skill demonstration: 50-80 bits
+- Advanced skills: 80+ bits
+
 Return JSON assessment:
 {
-  "score": (0-100 overall skill score),
+  "score": (0-100 bits overall skill score),
   "skillLevel": ("Beginner"|"Intermediate"|"Advanced"|"Expert"),
   "technicalProficiency": {
     "languageSpecific": (0-100),
@@ -295,6 +384,7 @@ Return JSON assessment:
 }
 
 Consider: code complexity, framework usage, architectural decisions, best practices, and innovation.
+Score based on demonstrated technical proficiency - most projects should score 20-70 bits.
 `;
   }
 
@@ -329,14 +419,14 @@ Prioritize high-impact improvements that align with the user's current skill lev
 
   getFallbackCodeQualityAnalysis(repositoryData, languageStats) {
     const languages = Object.keys(languageStats);
-    let baseScore = 60;
+    let baseScore = 50; // 티어 시스템에 맞게 조정 (50 bits)
 
-    if (repositoryData.description) baseScore += 10;
-    if (languages.length > 0) baseScore += 10;
-    if (repositoryData.stars > 5) baseScore += 5;
+    if (repositoryData.description) baseScore += 8;
+    if (languages.length > 0) baseScore += 8;
+    if (repositoryData.stars > 5) baseScore += 4;
 
     return {
-      score: Math.min(baseScore, 100),
+      score: Math.min(baseScore, 80), // 최대 80 bits로 제한
       metrics: {
         maintainabilityIndex: 75,
         cyclomaticComplexity: 8,
@@ -352,12 +442,12 @@ Prioritize high-impact improvements that align with the user's current skill lev
   }
 
   getFallbackStructureAnalysis(repositoryData) {
-    let baseScore = 65;
-    if (repositoryData.size > 100) baseScore += 10;
-    if (repositoryData.language) baseScore += 10;
+    let baseScore = 45; // 티어 시스템에 맞게 조정 (45 bits)
+    if (repositoryData.size > 100) baseScore += 8;
+    if (repositoryData.language) baseScore += 7;
 
     return {
-      score: Math.min(baseScore, 100),
+      score: Math.min(baseScore, 70), // 최대 70 bits로 제한
       metrics: {
         architectureScore: 70,
         organizationScore: 75,
@@ -373,7 +463,7 @@ Prioritize high-impact improvements that align with the user's current skill lev
 
   getFallbackSkillAnalysis(repositoryData) {
     return {
-      score: 70,
+      score: 40, // 티어 시스템에 맞게 조정 (40 bits) - 가중치 10%이므로 상대적으로 낮게
       skillLevel: 'Intermediate',
       technicalProficiency: {
         languageSpecific: 70,

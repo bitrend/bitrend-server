@@ -35,14 +35,20 @@ const getDashboardData = async (userId, period = '30d') => {
       throw error;
     }
 
-    // 사용자 기본 정보
-    const userData = await getUserData(user, userStats);
-
-    // 평가 프로젝트 정보
-    const evaluationProjectsData = await getEvaluationProjectsData(evaluationProjects, userId);
-
-    // 스킬 분석 정보
+    // 스킬 분석 정보 (먼저 계산하여 총합 점수 확보)
     const skillAnalysisData = await getSkillAnalysisData(userId, evaluationProjects, period);
+
+    // 카테고리별 총합 점수 계산
+    const { convertBitByteToScore } = require('../utils/score');
+    const totalSkillScore = skillAnalysisData?.total?.score
+      ? convertBitByteToScore(skillAnalysisData.total.score.byte, skillAnalysisData.total.score.bit)
+      : null;
+
+    // 사용자 기본 정보 (총합 점수 사용)
+    const userData = await getUserData(user, userStats, totalSkillScore);
+
+    // 평가 프로젝트 정보 (총합 점수 사용)
+    const evaluationProjectsData = await getEvaluationProjectsData(evaluationProjects, userId, totalSkillScore);
 
     // 랭킹 정보
     const rankingData = await getRankingData(userId, userRanking);
@@ -66,10 +72,11 @@ const getDashboardData = async (userId, period = '30d') => {
 /**
  * 사용자 기본 정보 구성
  */
-const getUserData = async (user, userStats) => {
-  const averageScore = userStats?.averageScore || 0;
-  const grade = calculateGrade(averageScore);
-  const skillLevel = calculateSkillLevel(averageScore);
+const getUserData = async (user, userStats, totalSkillScore) => {
+  // 카테고리별 총합 점수를 사용 (fallback으로 userStats 사용)
+  const finalScore = totalSkillScore || userStats?.averageScore || 0;
+  const grade = calculateGrade(finalScore);
+  const skillLevel = calculateSkillLevel(finalScore);
 
   return {
     id: user.id,
@@ -77,7 +84,7 @@ const getUserData = async (user, userStats) => {
     name: user.name || user.username,
     avatarUrl: user.avatarUrl,
     skillLevel,
-    totalScore: convertScoreToBitByte(averageScore),
+    totalScore: convertScoreToBitByte(finalScore),
     overallGrade: grade
   };
 };
@@ -85,7 +92,7 @@ const getUserData = async (user, userStats) => {
 /**
  * 평가 프로젝트 정보 구성
  */
-const getEvaluationProjectsData = async (evaluationProjects, userId) => {
+const getEvaluationProjectsData = async (evaluationProjects, userId, totalSkillScore = null) => {
   const projectsWithAnalysis = evaluationProjects.map(project => {
     const latestAnalysis = project.analyses && project.analyses.length > 0
       ? project.analyses.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))[0]
@@ -110,10 +117,13 @@ const getEvaluationProjectsData = async (evaluationProjects, userId) => {
   const completedEvaluations = completedProjects.length;
   const pendingEvaluations = projectsWithAnalysis.filter(p => p.evaluationStatus === 'pending').length;
   
-  // 종합 점수는 UserStats에서 가져옴 (이미 계산되어 있음)
-  const userStats = await userStatsRepository.findByUserId(userId);
-  const overallScoreBit = userStats?.averageScore;
-  
+  // 종합 점수는 totalSkillScore 사용 (fallback으로 UserStats 사용)
+  let overallScoreBit = totalSkillScore;
+  if (!overallScoreBit) {
+    const userStats = await userStatsRepository.findByUserId(userId);
+    overallScoreBit = userStats?.averageScore;
+  }
+
   const overallScore = overallScoreBit ? convertScoreToBitByte(overallScoreBit) : undefined;
 
   // 최고 점수 프로젝트 찾기
@@ -222,26 +232,36 @@ const getSkillAnalysisData = async (userId, evaluationProjects, period) => {
     return getEmptySkillAnalysis();
   }
 
-  // 최신 분석
-  const latestAnalysis = completedAnalyses[0];
-  const latestScore = latestAnalysis.score || 0;
-  const latestGrade = latestAnalysis.grade || 'N/A';
-  const skillLevel = calculateSkillLevel(latestScore);
+  // 카테고리별 점수 집계 (사용자 ID 기반으로 모든 분석 고려)
+  const distribution = await calculateDistribution(userId);
 
-  // 이전 분석과 비교하여 성장률 계산
-  const previousAnalysis = completedAnalyses.length > 1 ? completedAnalyses[1] : null;
-  const growth = calculateGrowth(latestScore, previousAnalysis?.score);
+  // 카테고리별 총합으로 전체 점수 계산
+  const { convertBitByteToScore } = require('../utils/score');
+  const totalScoreFromCategories = Object.values(distribution).reduce((sum, category) => {
+    return sum + convertBitByteToScore(category.score.byte, category.score.bit);
+  }, 0);
 
-  // 카테고리별 점수 집계
-  const distribution = await calculateDistribution(completedAnalyses);
+  const totalGrade = calculateGrade(totalScoreFromCategories);
+  const skillLevel = calculateSkillLevel(totalScoreFromCategories);
+
+  // 이전 분석과 비교하여 성장률 계산 (카테고리별 이전 총합 계산)
+  let previousTotalScore = 0;
+  if (completedAnalyses.length > 1) {
+    // 이전 분석의 카테고리별 점수를 계산하기 위해 이전 분석들을 제외한 분포 계산
+    const previousDistribution = await calculateDistributionForSpecificAnalyses(userId, completedAnalyses.slice(1));
+    previousTotalScore = Object.values(previousDistribution).reduce((sum, category) => {
+      return sum + convertBitByteToScore(category.score.byte, category.score.bit);
+    }, 0);
+  }
+  const growth = calculateGrowth(totalScoreFromCategories, previousTotalScore);
 
   // 시간별 변화 추이
   const variation = await calculateVariation(completedAnalyses, period);
 
   return {
     total: {
-      score: convertScoreToBitByte(latestScore),
-      grade: latestGrade,
+      score: convertScoreToBitByte(totalScoreFromCategories),
+      grade: totalGrade,
       skillLevel,
       growth
     },
@@ -286,15 +306,31 @@ const getEmptySkillAnalysis = () => {
 };
 
 /**
- * 카테고리별 점수 분포 계산
+ * 카테고리별 점수 분포 계산 (모든 완료된 분석의 평균 기준)
  */
-const calculateDistribution = async (analyses) => {
-  const latestAnalysis = analyses[0];
-  const previousAnalysis = analyses.length > 1 ? analyses[1] : null;
+const calculateDistribution = async (userId) => {
+  const { convertBitByteToScore } = require('../utils/score');
 
-  // 메트릭 가져오기
-  const latestMetrics = latestAnalysis.metrics || [];
-  const previousMetrics = previousAnalysis?.metrics || [];
+  // 사용자의 모든 완료된 분석과 메트릭을 가져옴
+  const analyses = await prisma.analysis.findMany({
+    where: {
+      userId,
+      status: 'completed'
+    },
+    include: {
+      metrics: true
+    },
+    orderBy: { createdAt: 'desc' }
+  });
+
+  if (analyses.length === 0) {
+    return {
+      codeQuality: { percentage: 35, score: { byte: 0, bit: 0 }, label: "Code Quality", improvement: "+0 bits" },
+      projectStructure: { percentage: 30, score: { byte: 0, bit: 0 }, label: "Project Structure", improvement: "+0 bits" },
+      contributionPattern: { percentage: 25, score: { byte: 0, bit: 0 }, label: "Contribution Pattern", improvement: "+0 bits" },
+      skillAssessment: { percentage: 10, score: { byte: 0, bit: 0 }, label: "Skill Assessment", improvement: "+0 bits" }
+    };
+  }
 
   // 카테고리별 점수 계산
   const categories = {
@@ -304,22 +340,116 @@ const calculateDistribution = async (analyses) => {
     skillAssessment: { label: 'Skill Assessment', percentage: 10, categoryName: 'languages' }
   };
 
-  const distribution = {};
+  // 카테고리별 평균 점수 계산
+  const categoryScores = {};
 
-  for (const [key, config] of Object.entries(categories)) {
-    const latestScore = getMetricScore(latestMetrics, config.categoryName);
-    const previousScore = getMetricScore(previousMetrics, config.categoryName);
-    const improvement = Math.round(latestScore - previousScore);
-    
-    distribution[key] = {
+  Object.entries(categories).forEach(([key, config]) => {
+    const categoryMetrics = [];
+
+    // 모든 분석에서 해당 카테고리의 overall_score 수집
+    analyses.forEach(analysis => {
+      analysis.metrics.forEach(metric => {
+        if (metric.category === config.categoryName && metric.name === 'overall_score') {
+          categoryMetrics.push(metric.value);
+        }
+      });
+    });
+
+    // 카테고리별 총점 합산 (평균 대신 합산)
+    const totalScore = categoryMetrics.length > 0
+      ? categoryMetrics.reduce((sum, score) => sum + score, 0)
+      : 0;
+
+    // 이전 분석과 비교를 위한 개선도 계산 (최근 분석 vs 이전 분석)
+    const recentScore = categoryMetrics[0] || 0;
+    const previousScore = categoryMetrics[1] || recentScore;
+    const improvement = Math.round(recentScore - previousScore);
+
+    categoryScores[key] = {
       percentage: config.percentage,
-      score: convertScoreToBitByte(latestScore),
+      score: convertScoreToBitByte(totalScore),
       label: config.label,
       improvement: improvement >= 0 ? `+${improvement} bits` : `${improvement} bits`
     };
+  });
+
+  console.log(`스킬 분포 계산 완료 (User ${userId}):`, {
+    totalAnalyses: analyses.length,
+    categoryScores: Object.entries(categoryScores).map(([cat, data]) => ({
+      category: cat,
+      totalScore: convertBitByteToScore(data.score.byte, data.score.bit),
+      improvement: data.improvement
+    }))
+  });
+
+  return categoryScores;
+};
+
+/**
+ * 특정 분석들에 대한 카테고리별 점수 분포 계산
+ */
+const calculateDistributionForSpecificAnalyses = async (userId, analyses) => {
+  const { convertBitByteToScore } = require('../utils/score');
+
+  if (analyses.length === 0) {
+    return {
+      codeQuality: { percentage: 35, score: { byte: 0, bit: 0 }, label: "Code Quality", improvement: "+0 bits" },
+      projectStructure: { percentage: 30, score: { byte: 0, bit: 0 }, label: "Project Structure", improvement: "+0 bits" },
+      contributionPattern: { percentage: 25, score: { byte: 0, bit: 0 }, label: "Contribution Pattern", improvement: "+0 bits" },
+      skillAssessment: { percentage: 10, score: { byte: 0, bit: 0 }, label: "Skill Assessment", improvement: "+0 bits" }
+    };
   }
 
-  return distribution;
+  // 메트릭이 포함된 분석들 가져오기
+  const analysesWithMetrics = await prisma.analysis.findMany({
+    where: {
+      id: { in: analyses.map(a => a.id) },
+      userId,
+      status: 'completed'
+    },
+    include: {
+      metrics: true
+    },
+    orderBy: { createdAt: 'desc' }
+  });
+
+  // 카테고리별 점수 계산
+  const categories = {
+    codeQuality: { label: 'Code Quality', percentage: 35, categoryName: 'code_quality' },
+    projectStructure: { label: 'Project Structure', percentage: 30, categoryName: 'project_structure' },
+    contributionPattern: { label: 'Contribution Pattern', percentage: 25, categoryName: 'activity' },
+    skillAssessment: { label: 'Skill Assessment', percentage: 10, categoryName: 'languages' }
+  };
+
+  // 카테고리별 평균 점수 계산
+  const categoryScores = {};
+
+  Object.entries(categories).forEach(([key, config]) => {
+    const categoryMetrics = [];
+
+    // 모든 분석에서 해당 카테고리의 overall_score 수집
+    analysesWithMetrics.forEach(analysis => {
+      analysis.metrics.forEach(metric => {
+        if (metric.category === config.categoryName && metric.name === 'overall_score') {
+          categoryMetrics.push(metric.value);
+        }
+      });
+    });
+
+    // 카테고리별 총점 합산
+    const totalScore = categoryMetrics.length > 0
+      ? categoryMetrics.reduce((sum, score) => sum + score, 0)
+      : 0;
+
+    categoryScores[key] = {
+      percentage: config.percentage,
+      score: convertScoreToBitByte(totalScore),
+      label: config.label,
+      improvement: "+0 bits"
+    };
+  });
+
+  return categoryScores;
 };
 
 /**
@@ -486,12 +616,12 @@ const getRecentActivityData = async (activities, userStats, evaluationProjects) 
  * 유틸리티 함수들
  */
 
-// Tier system: 1024 bit = 128 byte
+// Tier system: 현실적인 점수 기준으로 조정
 const TIERS = {
-  INTERN: { max: 127, name: 'Intern', color: '#gray' },
-  JUNIOR: { max: 255, name: 'Junior Dev', color: '#blue' },
-  SENIOR: { max: 767, name: 'Senior Dev', color: '#purple' },
-  ARCHITECT: { max: 1024, name: 'Architect', color: '#gold' }
+  INTERN: { max: 31, name: 'Intern', color: '#gray' },        // 0-31 bytes (0-248 bits)
+  JUNIOR: { max: 83, name: 'Junior Dev', color: '#blue' },    // 32-83 bytes (256-664 bits)
+  SENIOR: { max: 115, name: 'Senior Dev', color: '#purple' }, // 84-115 bytes (672-920 bits)
+  ARCHITECT: { max: 128, name: 'Architect', color: '#gold' }  // 116+ bytes (928+ bits)
 };
 
 const calculateGrade = (bitScore) => {

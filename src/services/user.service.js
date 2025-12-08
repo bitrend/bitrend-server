@@ -1,5 +1,8 @@
 const userRepository = require("../repositories/user.repository");
 const githubService = require("./github.service");
+const CacheService = require("./cache.service");
+
+const cacheService = new CacheService();
 
 const getAllUsers = async () => {
   const users = await userRepository.findAll();
@@ -40,66 +43,90 @@ const createUser = async (userData) => {
 };
 
 const getUserProfile = async (userId) => {
-  const user = await userRepository.findById(userId);
+  const cacheKey = cacheService.getUserKey(userId);
 
-  if (!user) {
-    const error = new Error("사용자를 찾을 수 없습니다.");
-    error.code = "USER_NOT_FOUND";
-    error.statusCode = 404;
-    throw error;
-  }
+  return await cacheService.cacheWithFallback(
+    cacheKey,
+    async () => {
+      const user = await userRepository.findById(userId);
 
-  return {
-    id: user.id,
-    githubId: user.githubId.toString(),
-    username: user.username,
-    name: user.name,
-    email: user.email,
-    avatarUrl: user.avatarUrl,
-    role: user.role,
-    joinDate: user.createdAt.toISOString().split("T")[0],
-    followerCount: user.followerCount,
-  };
+      if (!user) {
+        const error = new Error("사용자를 찾을 수 없습니다.");
+        error.code = "USER_NOT_FOUND";
+        error.statusCode = 404;
+        throw error;
+      }
+
+      return {
+        id: user.id,
+        githubId: user.githubId.toString(),
+        username: user.username,
+        name: user.name,
+        email: user.email,
+        avatarUrl: user.avatarUrl,
+        role: user.role,
+        joinDate: user.createdAt.toISOString().split("T")[0],
+        followerCount: user.followerCount,
+      };
+    },
+    60 * 10 // 10분 캐시
+  );
 };
 
 const getUserStats = async (userId) => {
-  const user = await userRepository.findById(userId);
+  const cacheKey = cacheService.getUserStatsKey(userId);
 
-  if (!user) {
-    const error = new Error("사용자를 찾을 수 없습니다.");
-    error.code = "USER_NOT_FOUND";
-    error.statusCode = 404;
-    throw error;
-  }
+  return await cacheService.cacheWithFallback(
+    cacheKey,
+    async () => {
+      const user = await userRepository.findById(userId);
 
-  // GitHub API를 통해 통계 조회
-  const stats = await githubService.getUserStats(
-    user.username,
-    user.accessToken
+      if (!user) {
+        const error = new Error("사용자를 찾을 수 없습니다.");
+        error.code = "USER_NOT_FOUND";
+        error.statusCode = 404;
+        throw error;
+      }
+
+      // GitHub API를 통해 통계 조회
+      const stats = await githubService.getUserStats(
+        user.username,
+        user.accessToken
+      );
+
+      return stats;
+    },
+    60 * 5 // 5분 캐시 (GitHub 데이터는 자주 변경)
   );
-
-  return stats;
 };
 
 const getUserActivities = async (userId, limit, offset) => {
-  const user = await userRepository.findById(userId);
+  const cacheKey = `user:${userId}:activities:${limit}:${offset}`;
 
-  if (!user) {
-    const error = new Error("사용자를 찾을 수 없습니다.");
-    error.code = "USER_NOT_FOUND";
-    error.statusCode = 404;
-    throw error;
-  }
+  return await cacheService.cacheWithFallback(
+    cacheKey,
+    async () => {
+      const user = await userRepository.findById(userId);
 
-  // GitHub API를 통해 활동 조회
-  const activities = await githubService.getUserActivities(
-    user.username,
-    user.accessToken,
-    limit,
-    offset
+      if (!user) {
+        const error = new Error("사용자를 찾을 수 없습니다.");
+        error.code = "USER_NOT_FOUND";
+        error.statusCode = 404;
+        throw error;
+      }
+
+      // GitHub API를 통해 활동 조회
+      const activities = await githubService.getUserActivities(
+        user.username,
+        user.accessToken,
+        limit,
+        offset
+      );
+
+      return activities;
+    },
+    60 * 3 // 3분 캐시 (활동 데이터는 더 자주 변경)
   );
-
-  return activities;
 };
 
 const updateUserProfile = async (userId, requesterId, updateData) => {
@@ -130,6 +157,9 @@ const updateUserProfile = async (userId, requesterId, updateData) => {
   }
 
   const updatedUser = await userRepository.update(userId, filteredData);
+
+  // 프로필 업데이트 후 관련 캐시 무효화
+  await cacheService.invalidateUserCache(userId);
 
   return {
     id: updatedUser.id,
