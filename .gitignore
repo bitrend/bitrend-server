@@ -16,3 +16,8 @@ logs/
 
 .kiro
 prisma/migrations/migration_lock.toml
+
+# Debug and test files
+debug-*.js
+test-*.js
+AI_vs_FALLBACK_COMPARISON.md
