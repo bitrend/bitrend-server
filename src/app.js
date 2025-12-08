@@ -8,7 +8,6 @@ const { httpLoggingMiddleware, logger } = require('./config/logger');
 const { getMonitoringService } = require('./services/monitoring.service');
 const swaggerUi = require('swagger-ui-express');
 const swaggerDocument = require('../swagger.json');
-const cors = require("cors");
 
 // Handle BigInt serialization in JSON
 BigInt.prototype.toJSON = function() {
