@@ -12,7 +12,7 @@ const { cache, cacheKeyGenerators } = require('../middlewares/cache');
 router.get(
   '/',
   requireAuth,
-  cache(30, cacheKeyGenerators.dashboard), // 30초 캐시
+  cache(10, cacheKeyGenerators.dashboard), // 10초 캐시
   dashboardController.getDashboard
 );
 

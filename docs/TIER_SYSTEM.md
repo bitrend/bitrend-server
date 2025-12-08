@@ -13,7 +13,8 @@ BitTrend는 bit/byte 단위를 사용한 독특한 평가 시스템을 채택하
 
 ### 점수 범위
 - 최소: 0 bit (0 byte)
-- 최대: 1024 bit (128 byte)
+- **현실적 최대**: ~800 bit (100 byte)
+- **이론적 최대**: 1024 bit (128 byte)
 
 ---
 
@@ -25,39 +26,39 @@ BitTrend는 4단계 티어 시스템을 운영합니다.
 
 | 티어 | 범위 (byte) | 범위 (bit) | 설명 |
 |------|-------------|------------|------|
-| **Intern** | 0 - 127 | 0 - 1016 | 입문 개발자 레벨 |
-| **Junior Dev** | 128 - 255 | 1024 - 2040 | 주니어 개발자 레벨 |
-| **Senior Dev** | 256 - 767 | 2048 - 6136 | 시니어 개발자 레벨 |
-| **Architect** | 768 - 1024 | 6144 - 8192 | 최상위 개발자 레벨 (상위 10인) |
+| **Intern** | 0 - 31 | 0 - 248 | 입문 개발자 레벨 |
+| **Junior Dev** | 32 - 83 | 256 - 664 | 주니어 개발자 레벨 |
+| **Senior Dev** | 84 - 115 | 672 - 920 | 시니어 개발자 레벨 |
+| **Architect** | 116 - 128 | 928 - 1024 | 최상위 개발자 레벨 (상위 10인) |
 
 ```javascript
 const TIERS = {
-  INTERN: { max: 127, name: 'Intern', color: '#gray' },
-  JUNIOR: { max: 255, name: 'Junior Dev', color: '#blue' },
-  SENIOR: { max: 767, name: 'Senior Dev', color: '#purple' },
-  ARCHITECT: { max: 1024, name: 'Architect', color: '#gold' }
+  INTERN: { max: 31, name: 'Intern', color: '#gray' },        // 0-31 bytes (0-248 bits)
+  JUNIOR: { max: 83, name: 'Junior Dev', color: '#blue' },    // 32-83 bytes (256-664 bits)
+  SENIOR: { max: 115, name: 'Senior Dev', color: '#purple' }, // 84-115 bytes (672-920 bits)
+  ARCHITECT: { max: 128, name: 'Architect', color: '#gold' }  // 116+ bytes (928+ bits)
 };
 ```
 
 ### 티어별 특징
 
-#### 🟤 Intern (0 - 127 byte)
+#### 🟤 Intern (0 - 31 byte)
 - 개발 입문자
 - 기초적인 프로젝트 경험
 - 학습 중심의 개발자
 
-#### 🔵 Junior Dev (128 - 255 byte)
+#### 🔵 Junior Dev (32 - 83 byte)
 - 실무 경험이 있는 주니어 개발자
 - 독립적인 기능 구현 가능
 - 코드 품질에 대한 이해 증가
 
-#### 🟣 Senior Dev (256 - 767 byte)
+#### 🟣 Senior Dev (84 - 115 byte)
 - 숙련된 시니어 개발자
 - 프로젝트 구조 설계 능력
 - 복잡한 문제 해결 능력
 - 팀 리딩 경험
 
-#### 🟡 Architect (768 - 1024 byte)
+#### 🟡 Architect (116 - 128 byte)
 - 최상위 레벨 개발자
 - 전체 시스템 아키텍처 설계
 - **상위 10인에게만 부여**
@@ -122,12 +123,13 @@ const TIERS = {
 ```
 총 점수 (bit) = Σ(카테고리별 점수 × 가중치)
 
-코드 품질: 최대 358.4 bit (35%)
-프로젝트 구조: 최대 307.2 bit (30%)
-기여 패턴: 최대 256 bit (25%)
-기술 역량: 최대 102.4 bit (10%)
+코드 품질: 최대 150 bit (35% 가중치)
+프로젝트 구조: 최대 120 bit (30% 가중치)
+기여 패턴: 최대 200 bit (25% 가중치)
+기술 역량: 최대 100 bit (10% 가중치)
 ────────────────────────────
-총합: 1024 bit = 128 byte
+현실적 총합: ~570 bit (71 byte)
+이론적 최대: 1024 bit (128 byte)
 ```
 
 ### Byte 변환
@@ -201,9 +203,13 @@ return 'F';
 
 ## 업데이트 내역
 
+- **2025-12-09**: 티어 시스템 현실화 조정
+  - 티어 기준을 현실적 점수에 맞게 대폭 하향 조정
+  - AI 점수 범위를 티어 시스템에 맞게 조정
+  - Intern: 0-31 bytes, Junior: 32-63 bytes, Senior: 64-95 bytes, Architect: 96+ bytes
 - **2025-12-08**: 초기 티어 시스템 정의
-- bit/byte 기반 평가 시스템 도입
-- 4단계 티어 구조 확립
+  - bit/byte 기반 평가 시스템 도입
+  - 4단계 티어 구조 확립
 
 ---
 
