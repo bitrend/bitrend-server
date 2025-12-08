@@ -14,7 +14,7 @@ const getProjectsByUserId = async (userId) => {
   }
 };
 
-const addProject = async (userId, githubRepositoryData) => {
+const addProject = async (userId, githubRepositoryData, priority = null) => {
   try {
     const projectCount = await evaluationProjectRepository.countByUserId(userId);
 
@@ -45,7 +45,13 @@ const addProject = async (userId, githubRepositoryData) => {
       repository = await githubRepositoryRepository.upsertFromGithub(githubRepositoryData);
     }
 
-    const project = await evaluationProjectRepository.createWithMaxOrder(userId, repository.id);
+    const project = priority !== null
+      ? await evaluationProjectRepository.create({
+          userId,
+          repositoryId: repository.id,
+          order: priority
+        })
+      : await evaluationProjectRepository.createWithMaxOrder(userId, repository.id);
 
     await userStatsRepository.incrementProjects(userId);
 
