@@ -1,5 +1,22 @@
 const authService = require('../services/auth.service');
 
+/**
+ * GitHub OAuth 로그인 URL 반환
+ */
+const getGithubAuthUrl = async (req, res, next) => {
+  try {
+    const authUrl = authService.getGithubAuthUrl();
+    res.json({ 
+      success: true,
+      authUrl,
+      message: 'GitHub 인증 URL을 생성했습니다. 이 URL로 이동하여 권한을 승인해주세요.'
+    });
+  } catch (error) {
+    console.error('Get GitHub auth URL error:', error.message);
+    next(error);
+  }
+};
+
 const githubCallback = async (req, res, next) => {
   try {
     const { authorizationCode } = req.body;
@@ -20,5 +37,6 @@ const githubCallback = async (req, res, next) => {
 };
 
 module.exports = {
+  getGithubAuthUrl,
   githubCallback
 };

@@ -8,6 +8,16 @@ yarn-error.log
 dist
 coverage
 
+# Logs
+logs/
+*.log
+
 /src/generated/prisma
 
 .kiro
+prisma/migrations/migration_lock.toml
+
+# Debug and test files
+debug-*.js
+test-*.js
+AI_vs_FALLBACK_COMPARISON.md

@@ -3,21 +3,22 @@
   "info": {
     "title": "Bitrend API",
     "version": "1.0.0",
-    "description": "Auto‑generated Swagger documentation for the Bitrend server"
+    "description": "Bitrend 서버 API - GitHub 기반 개발자 트렌드 분석 플랫폼"
   },
   "servers": [
     {
       "url": "http://localhost:3000",
-      "description": "Local development server"
+      "description": "로컬 개발 서버"
     }
   ],
   "paths": {
     "/health": {
       "get": {
-        "summary": "Health check",
+        "tags": ["Health Check"],
+        "summary": "서버 상태 확인",
         "responses": {
           "200": {
-            "description": "Server is healthy",
+            "description": "서버가 정상 동작 중",
             "content": {
               "application/json": {
                 "schema": {
@@ -37,7 +38,9 @@
     },
     "/api/auth/github/callback": {
       "post": {
-        "summary": "GitHub OAuth callback",
+        "tags": ["Authentication"],
+        "summary": "GitHub OAuth 콜백 처리",
+        "description": "GitHub OAuth 인증 코드를 받아 JWT 토큰과 사용자 정보를 반환합니다.",
         "requestBody": {
           "required": true,
           "content": {
@@ -46,96 +49,147 @@
                 "type": "object",
                 "properties": {
                   "authorizationCode": {
-                    "type": "string"
+                    "type": "string",
+                    "description": "GitHub OAuth 인증 코드"
                   }
                 },
-                "required": [
-                  "authorizationCode"
-                ]
+                "required": ["authorizationCode"]
               }
             }
           }
         },
         "responses": {
           "200": {
-            "description": "Authentication successful",
+            "description": "인증 성공",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "properties": {
-                    "token": {
-                      "type": "string"
-                    },
-                    "user": {
-                      "type": "object",
-                      "properties": {
-                        "id": {
-                          "type": "integer"
-                        },
-                        "githubId": {
-                          "type": "integer"
-                        },
-                        "username": {
-                          "type": "string"
-                        },
-                        "name": {
-                          "type": "string"
-                        },
-                        "email": {
-                          "type": "string"
-                        },
-                        "avatarUrl": {
-                          "type": "string"
-                        }
-                      }
-                    }
-                  }
+                  "$ref": "#/components/schemas/AuthResponse"
                 }
               }
             }
           },
           "400": {
-            "description": "Bad request"
+            "description": "잘못된 요청"
           },
           "500": {
-            "description": "Server error"
+            "description": "서버 에러"
           }
         }
       }
     },
-    "/api/images": {
+    "/api/github/repositories": {
       "get": {
-        "summary": "Get image list (authenticated)",
-        "security": [
+        "tags": ["GitHub"],
+        "summary": "사용자의 GitHub 저장소 목록 조회",
+        "security": [{"bearerAuth": []}],
+        "responses": {
+          "200": {
+            "description": "저장소 목록",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Repository"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "인증되지 않음"
+          }
+        }
+      }
+    },
+    "/api/github/repositories/{owner}/{repo}": {
+      "get": {
+        "tags": ["GitHub"],
+        "summary": "특정 저장소의 상세 정보 조회",
+        "security": [{"bearerAuth": []}],
+        "parameters": [
           {
-            "bearerAuth": []
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "저장소 소유자"
+          },
+          {
+            "name": "repo",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "저장소 이름"
           }
         ],
         "responses": {
           "200": {
-            "description": "List of images",
+            "description": "저장소 상세 정보",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RepositoryDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "인증되지 않음"
+          },
+          "404": {
+            "description": "저장소를 찾을 수 없음"
+          }
+        }
+      }
+    },
+    "/api/evaluation/projects": {
+      "get": {
+        "tags": ["Evaluation"],
+        "summary": "평가 프로젝트 목록 조회",
+        "description": "사용자의 모든 GitHub 레포지토리와 평가 프로젝트 정보를 반환합니다. isSelected 필드로 평가 대상 여부를 확인할 수 있습니다.",
+        "security": [{"bearerAuth": []}],
+        "responses": {
+          "200": {
+            "description": "평가 프로젝트 목록",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "images": {
+                    "evaluationProjects": {
                       "type": "array",
                       "items": {
-                        "type": "object",
-                        "properties": {
-                          "id": {
-                            "type": "integer"
-                          },
-                          "url": {
-                            "type": "string"
-                          },
-                          "name": {
-                            "type": "string"
-                          }
-                        }
+                        "$ref": "#/components/schemas/EvaluationProject"
                       }
+                    },
+                    "maxProjects": {
+                      "type": "integer",
+                      "example": 3
+                    },
+                    "currentCount": {
+                      "type": "integer",
+                      "description": "현재 선택된 프로젝트 수"
+                    },
+                    "availableSlots": {
+                      "type": "integer",
+                      "description": "추가 가능한 프로젝트 수"
+                    },
+                    "overallScore": {
+                      "type": "number",
+                      "nullable": true,
+                      "description": "전체 평균 점수"
+                    },
+                    "lastEvaluatedAt": {
+                      "type": "string",
+                      "format": "date-time",
+                      "nullable": true,
+                      "description": "마지막 평가 시간"
                     }
                   }
                 }
@@ -143,25 +197,463 @@
             }
           },
           "401": {
-            "description": "Unauthorized"
+            "description": "인증되지 않음"
+          }
+        }
+      },
+      "post": {
+        "tags": ["Evaluation"],
+        "summary": "새로운 평가 프로젝트 추가",
+        "security": [{"bearerAuth": []}],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateEvaluationProject"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "프로젝트 생성됨",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationProject"
+                }
+              }
+            }
           },
-          "403": {
-            "description": "Forbidden"
+          "400": {
+            "description": "잘못된 요청"
+          },
+          "401": {
+            "description": "인증되지 않음"
+          }
+        }
+      }
+    },
+    "/api/evaluation/projects/reorder": {
+      "put": {
+        "tags": ["Evaluation"],
+        "summary": "평가 프로젝트 순서 변경",
+        "security": [{"bearerAuth": []}],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReorderProjectsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "순서 변경 완료"
+          },
+          "400": {
+            "description": "잘못된 요청"
+          },
+          "401": {
+            "description": "인증되지 않음"
+          }
+        }
+      }
+    },
+    "/api/evaluation/projects/{id}": {
+      "get": {
+        "tags": ["Evaluation"],
+        "summary": "특정 평가 프로젝트 조회",
+        "security": [{"bearerAuth": []}],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "프로젝트 정보",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationProject"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "인증되지 않음"
+          },
+          "404": {
+            "description": "프로젝트를 찾을 수 없음"
+          }
+        }
+      },
+      "delete": {
+        "tags": ["Evaluation"],
+        "summary": "평가 프로젝트 삭제",
+        "security": [{"bearerAuth": []}],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "삭제 완료"
+          },
+          "401": {
+            "description": "인증되지 않음"
+          },
+          "404": {
+            "description": "프로젝트를 찾을 수 없음"
+          }
+        }
+      }
+    },
+    "/api/analysis/evaluation": {
+      "post": {
+        "tags": ["Analysis"],
+        "summary": "평가 분석 시작",
+        "security": [{"bearerAuth": []}],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartAnalysisRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "분석 시작됨",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisStartResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "잘못된 요청"
+          },
+          "401": {
+            "description": "인증되지 않음"
+          }
+        }
+      }
+    },
+    "/api/analysis/comprehensive": {
+      "post": {
+        "tags": ["Analysis"],
+        "summary": "종합 분석 시작 (AI 분석 포함)",
+        "security": [{"bearerAuth": []}],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartAnalysisRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "분석 시작됨",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisStartResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "잘못된 요청"
+          },
+          "401": {
+            "description": "인증되지 않음"
+          }
+        }
+      }
+    },
+    "/api/analysis/evaluation/{id}/status": {
+      "get": {
+        "tags": ["Analysis"],
+        "summary": "분석 상태 조회",
+        "security": [{"bearerAuth": []}],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "분석 상태",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisStatus"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "인증되지 않음"
+          },
+          "404": {
+            "description": "분석을 찾을 수 없음"
+          }
+        }
+      }
+    },
+    "/api/analysis/evaluation/{id}/results": {
+      "get": {
+        "tags": ["Analysis"],
+        "summary": "분석 결과 조회",
+        "security": [{"bearerAuth": []}],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "분석 결과",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "인증되지 않음"
+          },
+          "404": {
+            "description": "분석을 찾을 수 없음"
+          }
+        }
+      }
+    },
+    "/api/recommendations": {
+      "get": {
+        "tags": ["Recommendations"],
+        "summary": "사용자 맞춤 추천 조회",
+        "security": [{"bearerAuth": []}],
+        "responses": {
+          "200": {
+            "description": "추천 목록",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Recommendation"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "인증되지 않음"
+          }
+        }
+      }
+    },
+    "/api/recommendations/analysis/{analysisId}": {
+      "get": {
+        "tags": ["Recommendations"],
+        "summary": "특정 분석에 대한 추천 조회",
+        "security": [{"bearerAuth": []}],
+        "parameters": [
+          {
+            "name": "analysisId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "분석별 추천",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Recommendation"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "인증되지 않음"
+          },
+          "404": {
+            "description": "분석을 찾을 수 없음"
+          }
+        }
+      }
+    },
+    "/api/recommendations/learning-path": {
+      "get": {
+        "tags": ["Recommendations"],
+        "summary": "개인화된 학습 경로 조회",
+        "security": [{"bearerAuth": []}],
+        "responses": {
+          "200": {
+            "description": "학습 경로",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearningPath"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "인증되지 않음"
+          }
+        }
+      }
+    },
+    "/api/recommendations/analysis/{analysisId}/generate": {
+      "post": {
+        "tags": ["Recommendations"],
+        "summary": "분석별 추천 생성",
+        "security": [{"bearerAuth": []}],
+        "parameters": [
+          {
+            "name": "analysisId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "추천 생성 완료"
+          },
+          "401": {
+            "description": "인증되지 않음"
+          },
+          "404": {
+            "description": "분석을 찾을 수 없음"
+          }
+        }
+      }
+    },
+    "/api/monitoring/health": {
+      "get": {
+        "tags": ["Monitoring"],
+        "summary": "기본 헬스 체크",
+        "responses": {
+          "200": {
+            "description": "서비스 상태"
+          }
+        }
+      }
+    },
+    "/api/monitoring/liveness": {
+      "get": {
+        "tags": ["Monitoring"],
+        "summary": "라이브니스 프로브",
+        "responses": {
+          "200": {
+            "description": "서비스가 살아있음"
+          }
+        }
+      }
+    },
+    "/api/monitoring/readiness": {
+      "get": {
+        "tags": ["Monitoring"],
+        "summary": "레디니스 프로브",
+        "responses": {
+          "200": {
+            "description": "서비스가 준비됨"
+          }
+        }
+      }
+    },
+    "/api/monitoring/health/detailed": {
+      "get": {
+        "tags": ["Monitoring"],
+        "summary": "상세 헬스 정보",
+        "responses": {
+          "200": {
+            "description": "상세 헬스 정보와 메트릭",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DetailedHealth"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/monitoring/metrics": {
+      "get": {
+        "tags": ["Monitoring"],
+        "summary": "성능 메트릭 조회",
+        "responses": {
+          "200": {
+            "description": "성능 메트릭",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Metrics"
+                }
+              }
+            }
           }
         }
       }
     },
     "/api/users": {
       "get": {
-        "summary": "Get all users (admin)",
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
+        "tags": ["Users"],
+        "summary": "모든 사용자 조회 (관리자)",
+        "security": [{"bearerAuth": []}],
         "responses": {
           "200": {
-            "description": "List of users",
+            "description": "사용자 목록",
             "content": {
               "application/json": {
                 "schema": {
@@ -174,33 +666,30 @@
             }
           },
           "401": {
-            "description": "Unauthorized"
+            "description": "인증되지 않음"
           },
           "403": {
-            "description": "Forbidden"
+            "description": "권한 없음"
           }
         }
       },
       "post": {
-        "summary": "Create a new user (admin)",
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
+        "tags": ["Users"],
+        "summary": "새 사용자 생성 (관리자)",
+        "security": [{"bearerAuth": []}],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/UserProfile"
+                "$ref": "#/components/schemas/CreateUserRequest"
               }
             }
           }
         },
         "responses": {
           "201": {
-            "description": "User created",
+            "description": "사용자 생성됨",
             "content": {
               "application/json": {
                 "schema": {
@@ -210,25 +699,22 @@
             }
           },
           "400": {
-            "description": "Bad request"
+            "description": "잘못된 요청"
           },
           "401": {
-            "description": "Unauthorized"
+            "description": "인증되지 않음"
           },
           "403": {
-            "description": "Forbidden"
+            "description": "권한 없음"
           }
         }
       }
     },
     "/api/users/{userId}": {
       "get": {
-        "summary": "Get user profile",
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
+        "tags": ["Users"],
+        "summary": "사용자 프로필 조회",
+        "security": [{"bearerAuth": []}],
         "parameters": [
           {
             "name": "userId",
@@ -241,7 +727,7 @@
         ],
         "responses": {
           "200": {
-            "description": "User profile",
+            "description": "사용자 프로필",
             "content": {
               "application/json": {
                 "schema": {
@@ -251,23 +737,20 @@
             }
           },
           "401": {
-            "description": "Unauthorized"
+            "description": "인증되지 않음"
           },
           "403": {
-            "description": "Forbidden"
+            "description": "권한 없음"
           },
           "404": {
-            "description": "User not found"
+            "description": "사용자를 찾을 수 없음"
           }
         }
       },
       "patch": {
-        "summary": "Update user profile",
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
+        "tags": ["Users"],
+        "summary": "사용자 프로필 업데이트",
+        "security": [{"bearerAuth": []}],
         "parameters": [
           {
             "name": "userId",
@@ -290,7 +773,7 @@
         },
         "responses": {
           "200": {
-            "description": "Updated profile",
+            "description": "업데이트된 프로필",
             "content": {
               "application/json": {
                 "schema": {
@@ -300,28 +783,25 @@
             }
           },
           "400": {
-            "description": "Validation error"
+            "description": "검증 오류"
           },
           "401": {
-            "description": "Unauthorized"
+            "description": "인증되지 않음"
           },
           "403": {
-            "description": "Forbidden"
+            "description": "권한 없음"
           },
           "404": {
-            "description": "User not found"
+            "description": "사용자를 찾을 수 없음"
           }
         }
       }
     },
     "/api/users/{userId}/stats": {
       "get": {
-        "summary": "Get user statistics",
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
+        "tags": ["Users"],
+        "summary": "사용자 통계 조회",
+        "security": [{"bearerAuth": []}],
         "parameters": [
           {
             "name": "userId",
@@ -334,7 +814,7 @@
         ],
         "responses": {
           "200": {
-            "description": "User stats",
+            "description": "사용자 통계",
             "content": {
               "application/json": {
                 "schema": {
@@ -344,25 +824,22 @@
             }
           },
           "401": {
-            "description": "Unauthorized"
+            "description": "인증되지 않음"
           },
           "403": {
-            "description": "Forbidden"
+            "description": "권한 없음"
           },
           "404": {
-            "description": "User not found"
+            "description": "사용자를 찾을 수 없음"
           }
         }
       }
     },
     "/api/users/{userId}/activities": {
       "get": {
-        "summary": "Get user recent activities",
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
+        "tags": ["Users"],
+        "summary": "사용자 활동 내역 조회",
+        "security": [{"bearerAuth": []}],
         "parameters": [
           {
             "name": "userId",
@@ -393,7 +870,7 @@
         ],
         "responses": {
           "200": {
-            "description": "User activities",
+            "description": "사용자 활동 내역",
             "content": {
               "application/json": {
                 "schema": {
@@ -403,13 +880,43 @@
             }
           },
           "401": {
-            "description": "Unauthorized"
+            "description": "인증되지 않음"
           },
           "403": {
-            "description": "Forbidden"
+            "description": "권한 없음"
           },
           "404": {
-            "description": "User not found"
+            "description": "사용자를 찾을 수 없음"
+          }
+        }
+      }
+    },
+    "/api/images": {
+      "get": {
+        "tags": ["Images"],
+        "summary": "이미지 목록 조회",
+        "security": [{"bearerAuth": []}],
+        "responses": {
+          "200": {
+            "description": "이미지 목록",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "images": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Image"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "인증되지 않음"
           }
         }
       }
@@ -424,6 +931,534 @@
       }
     },
     "schemas": {
+      "AuthResponse": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string",
+            "description": "JWT 인증 토큰"
+          },
+          "user": {
+            "$ref": "#/components/schemas/UserProfile"
+          }
+        },
+        "required": ["token", "user"]
+      },
+      "Repository": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "full_name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "private": {
+            "type": "boolean"
+          },
+          "html_url": {
+            "type": "string"
+          },
+          "language": {
+            "type": "string"
+          },
+          "stargazers_count": {
+            "type": "integer"
+          },
+          "forks_count": {
+            "type": "integer"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "RepositoryDetail": {
+        "allOf": [
+          {"$ref": "#/components/schemas/Repository"},
+          {
+            "type": "object",
+            "properties": {
+              "size": {
+                "type": "integer"
+              },
+              "default_branch": {
+                "type": "string"
+              },
+              "topics": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "license": {
+                "type": "object",
+                "properties": {
+                  "key": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "EvaluationProject": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "프로젝트 ID 또는 github-{repoId} 형식"
+          },
+          "githubRepo": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "description": "GitHub 레포지토리 ID"
+              },
+              "name": {
+                "type": "string"
+              },
+              "fullName": {
+                "type": "string"
+              },
+              "description": {
+                "type": "string"
+              },
+              "isPublic": {
+                "type": "boolean"
+              },
+              "language": {
+                "type": "string"
+              },
+              "license": {
+                "type": "string",
+                "nullable": true
+              },
+              "updatedAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "githubUrl": {
+                "type": "string"
+              },
+              "stats": {
+                "type": "object",
+                "properties": {
+                  "commits": {
+                    "type": "integer"
+                  },
+                  "contributors": {
+                    "type": "integer"
+                  },
+                  "stars": {
+                    "type": "integer"
+                  },
+                  "forks": {
+                    "type": "integer"
+                  },
+                  "size": {
+                    "type": "integer"
+                  }
+                }
+              }
+            }
+          },
+          "evaluationStatus": {
+            "type": "string",
+            "enum": ["pending", "analyzing", "completed", "failed"],
+            "nullable": true,
+            "description": "평가 상태 (null이면 평가 대상이 아님)"
+          },
+          "evaluationScore": {
+            "type": "number",
+            "nullable": true
+          },
+          "evaluationGrade": {
+            "type": "string",
+            "nullable": true
+          },
+          "addedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "lastEvaluatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "priority": {
+            "type": "integer",
+            "description": "프로젝트 우선순위"
+          },
+          "isSelected": {
+            "type": "boolean",
+            "description": "평가 대상으로 선택되었는지 여부"
+          }
+        },
+        "required": ["id", "githubRepo", "priority", "isSelected"]
+      },
+      "CreateEvaluationProject": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "repositoryUrl": {
+            "type": "string"
+          }
+        },
+        "required": ["name", "repositoryUrl"]
+      },
+      "ReorderProjectsRequest": {
+        "type": "object",
+        "properties": {
+          "projectIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "새로운 순서로 정렬된 프로젝트 ID 배열"
+          }
+        },
+        "required": ["projectIds"]
+      },
+      "StartAnalysisRequest": {
+        "type": "object",
+        "properties": {
+          "projectIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "includeAI": {
+            "type": "boolean",
+            "default": false,
+            "description": "AI 분석 포함 여부"
+          }
+        },
+        "required": ["projectIds"]
+      },
+      "AnalysisStartResponse": {
+        "type": "object",
+        "properties": {
+          "analysisId": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["started", "queued"]
+          },
+          "estimatedCompletion": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "AnalysisStatus": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["pending", "running", "completed", "failed"]
+          },
+          "progress": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "currentStep": {
+            "type": "string"
+          },
+          "startedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "completedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "error": {
+            "type": "string"
+          }
+        }
+      },
+      "AnalysisResult": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "projectResults": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProjectAnalysisResult"
+            }
+          },
+          "summary": {
+            "type": "object",
+            "properties": {
+              "totalProjects": {
+                "type": "integer"
+              },
+              "averageScore": {
+                "type": "number"
+              },
+              "recommendations": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "completedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "ProjectAnalysisResult": {
+        "type": "object",
+        "properties": {
+          "projectId": {
+            "type": "string"
+          },
+          "projectName": {
+            "type": "string"
+          },
+          "score": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "metrics": {
+            "type": "object",
+            "properties": {
+              "codeQuality": {
+                "type": "number"
+              },
+              "performance": {
+                "type": "number"
+              },
+              "security": {
+                "type": "number"
+              },
+              "maintainability": {
+                "type": "number"
+              }
+            }
+          },
+          "issues": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string"
+                },
+                "severity": {
+                  "type": "string",
+                  "enum": ["low", "medium", "high", "critical"]
+                },
+                "message": {
+                  "type": "string"
+                },
+                "file": {
+                  "type": "string"
+                },
+                "line": {
+                  "type": "integer"
+                }
+              }
+            }
+          }
+        }
+      },
+      "Recommendation": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": ["learning", "tool", "library", "best_practice"]
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "priority": {
+            "type": "string",
+            "enum": ["low", "medium", "high"]
+          },
+          "category": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "estimatedTime": {
+            "type": "string"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "LearningPath": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "estimatedDuration": {
+            "type": "string"
+          },
+          "steps": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "order": {
+                  "type": "integer"
+                },
+                "estimatedTime": {
+                  "type": "string"
+                },
+                "resources": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Recommendation"
+                  }
+                }
+              }
+            }
+          },
+          "progress": {
+            "type": "object",
+            "properties": {
+              "completedSteps": {
+                "type": "integer"
+              },
+              "totalSteps": {
+                "type": "integer"
+              },
+              "percentage": {
+                "type": "number"
+              }
+            }
+          }
+        }
+      },
+      "DetailedHealth": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "uptime": {
+            "type": "number"
+          },
+          "database": {
+            "type": "object",
+            "properties": {
+              "connected": {
+                "type": "boolean"
+              },
+              "responseTime": {
+                "type": "number"
+              }
+            }
+          },
+          "memory": {
+            "type": "object",
+            "properties": {
+              "used": {
+                "type": "number"
+              },
+              "total": {
+                "type": "number"
+              },
+              "percentage": {
+                "type": "number"
+              }
+            }
+          }
+        }
+      },
+      "Metrics": {
+        "type": "object",
+        "properties": {
+          "requestCount": {
+            "type": "integer"
+          },
+          "averageResponseTime": {
+            "type": "number"
+          },
+          "errorRate": {
+            "type": "number"
+          },
+          "activeConnections": {
+            "type": "integer"
+          },
+          "systemLoad": {
+            "type": "object",
+            "properties": {
+              "cpu": {
+                "type": "number"
+              },
+              "memory": {
+                "type": "number"
+              }
+            }
+          }
+        }
+      },
       "UserProfile": {
         "type": "object",
         "properties": {
@@ -462,6 +1497,31 @@
           "role",
           "joinDate"
         ]
+      },
+      "CreateUserRequest": {
+        "type": "object",
+        "properties": {
+          "githubId": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "avatarUrl": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string",
+            "default": "user"
+          }
+        },
+        "required": ["githubId", "username", "name"]
       },
       "UserStats": {
         "type": "object",
@@ -553,6 +1613,27 @@
           },
           "role": {
             "type": "string"
+          }
+        }
+      },
+      "Image": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "url": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
           }
         }
       },

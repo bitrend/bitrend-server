@@ -2,6 +2,23 @@ const axios = require('axios');
 const userRepository = require('../repositories/user.repository');
 const { generateToken } = require('../utils/jwt');
 
+/**
+ * GitHub OAuth 로그인 URL 생성 (필요한 scope 포함)
+ */
+const getGithubAuthUrl = () => {
+  const clientID = process.env.GITHUB_CLIENT_ID;
+  const redirectUri = process.env.GITHUB_REDIRECT_URI;
+  
+  if (!clientID) {
+    throw new Error('GitHub OAuth credentials are not configured');
+  }
+
+  // 필요한 scope: repo (모든 저장소 접근), user:email (이메일)
+  const scope = 'repo,user:email';
+  
+  return `https://github.com/login/oauth/authorize?client_id=${clientID}&redirect_uri=${redirectUri}&scope=${scope}`;
+};
+
 const handleGithubCallback = async (authorizationCode) => {
   const clientID = process.env.GITHUB_CLIENT_ID;
   const clientSecret = process.env.GITHUB_CLIENT_SECRET;
@@ -80,5 +97,6 @@ const handleGithubCallback = async (authorizationCode) => {
 };
 
 module.exports = {
+  getGithubAuthUrl,
   handleGithubCallback
 };
